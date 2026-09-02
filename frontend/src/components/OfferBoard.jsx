@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '../WalletContext.jsx'
-import { getOpenOffers, getCounters, lockOrder, cancelOffer, waitForTransaction } from '../p2pClient.js'
+import { getOpenOffers, getCounters, lockOrder, cancelOffer, getMyLatestTradeId, waitForTransaction } from '../p2pClient.js'
 
 export default function OfferBoard({ onTradeCreated }) {
   const { address, walletClient } = useWallet()
@@ -28,10 +28,11 @@ export default function OfferBoard({ onTradeCreated }) {
       const hash = await lockOrder(walletClient, offerId)
       setActionState(s => ({ ...s, [offerId]: { loading: true, status: 'Confirming…', error: '' } }))
       const receipt = await waitForTransaction(hash)
-      // Extract trade_id from receipt logs if possible, fallback to refresh
+      // Fix 4: recover trade_id immediately after lock
+      const tradeId = await getMyLatestTradeId(address, 'buyer')
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '✅ Order locked!', error: '' } }))
       await refresh()
-      onTradeCreated?.()
+      onTradeCreated?.(Number(tradeId))
     } catch (err) {
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Failed' } }))
     }

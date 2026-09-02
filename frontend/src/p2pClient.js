@@ -75,6 +75,15 @@ export async function getMyActiveTrades(address) {
   })
 }
 
+/** Fix 4: recover latest trade_id after lock_order() — role: "buyer" | "seller" */
+export async function getMyLatestTradeId(address, role = 'buyer') {
+  return await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'get_my_latest_trade_id',
+    args: [address, role],
+  })
+}
+
 export async function getCounters() {
   return await publicClient.readContract({
     address: P2P_ESCROW_ADDRESS,
