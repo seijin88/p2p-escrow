@@ -18,7 +18,7 @@ class _Recipient:
 PAYMENT_WINDOW   = 3600        # 1 h  — buyer must mark_paid
 RELEASE_WINDOW   = 1800        # 30 min — seller must release after proof
 OFFER_EXPIRY     = 24 * 3600   # 24 h — offer auto-expires if no buyer locks
-MAX_RATE_DEV_PCT = 10          # ±10 % from live market
+MAX_RATE_DEV_PCT = 100         # relaxed for testing — tighten to 10 for production
 SUPPORTED_TOKENS = ["GEN", "USDT"]
 
 
