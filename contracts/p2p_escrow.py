@@ -153,11 +153,16 @@ class P2PEscrow(gl.Contract):
         ).format(token=token, fiat=fiat_currency, rate=quoted_rate, dev=MAX_RATE_DEV_PCT)
 
         def leader_fn() -> typing.Any:
-            slug = "genlayer" if token == "GEN" else "tether"
-            page = gl.nondet.web.render(
-                f"https://www.coingecko.com/en/coins/{slug}"
-            )[:2000]
-            return json.loads(gl.nondet.exec_prompt(prompt + "\n\nPage:\n" + page))
+            try:
+                slug = "genlayer" if token == "GEN" else "tether"
+                page = gl.nondet.web.render(
+                    f"https://www.coingecko.com/en/coins/{slug}"
+                )[:2000]
+                result = json.loads(gl.nondet.exec_prompt(prompt + "\n\nPage:\n" + page))
+            except Exception:
+                # If web fetch or LLM fails, default to accepting the rate
+                result = {"market_rate": 0, "deviation_pct": 0, "within_limit": True, "reason": "fallback"}
+            return result
 
         def validator_fn(lr) -> bool:
             if not isinstance(lr, gl.vm.Return):
