@@ -4,9 +4,6 @@ import { testnetBradbury } from 'genlayer-js/chains'
 export const P2P_ESCROW_ADDRESS =
   import.meta.env.VITE_P2P_ESCROW_ADDRESS || '0x0000000000000000000000000000000000000000'
 
-export const REPUTATION_ADDRESS =
-  import.meta.env.VITE_REPUTATION_ADDRESS || '0x0000000000000000000000000000000000000000'
-
 // ── Public read-only client (no wallet needed) ────────────────────────────────
 export const publicClient = createClient({ chain: testnetBradbury })
 
@@ -113,6 +110,14 @@ export async function cancelOffer(walletClient, offerId) {
   })
 }
 
+export async function expireOffer(walletClient, offerId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'expire_offer',
+    args: [BigInt(offerId)],
+  })
+}
+
 export async function lockOrder(walletClient, offerId) {
   return await walletClient.writeContract({
     address: P2P_ESCROW_ADDRESS,
@@ -166,42 +171,6 @@ export async function cancelExpiredOrder(walletClient, tradeId) {
     address: P2P_ESCROW_ADDRESS,
     functionName: 'cancel_expired_order',
     args: [BigInt(tradeId)],
-  })
-}
-
-export async function setReputationContract(walletClient, repAddress) {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'set_reputation_contract',
-    args: [repAddress],
-  })
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TRADER REPUTATION — Read
-// ══════════════════════════════════════════════════════════════════════════════
-
-export async function getTraderProfile(address) {
-  return await publicClient.readContract({
-    address: REPUTATION_ADDRESS,
-    functionName: 'get_trader_profile',
-    args: [address],
-  })
-}
-
-export async function isEligible(address) {
-  return await publicClient.readContract({
-    address: REPUTATION_ADDRESS,
-    functionName: 'is_eligible',
-    args: [address],
-  })
-}
-
-export async function setEscrowContract(walletClient, escrowAddress) {
-  return await walletClient.writeContract({
-    address: REPUTATION_ADDRESS,
-    functionName: 'set_escrow_contract',
-    args: [escrowAddress],
   })
 }
 

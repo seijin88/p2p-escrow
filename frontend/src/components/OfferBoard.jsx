@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '../WalletContext.jsx'
-import { getOpenOffers, getCounters, lockOrder, cancelOffer, getMyLatestTradeId, waitForTransaction } from '../p2pClient.js'
+import { getOpenOffers, getCounters, lockOrder, cancelOffer, expireOffer, getMyLatestTradeId, waitForTransaction } from '../p2pClient.js'
 
 export default function OfferBoard({ onTradeCreated }) {
   const { address, walletClient } = useWallet()
@@ -33,6 +33,19 @@ export default function OfferBoard({ onTradeCreated }) {
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '✅ Order locked!', error: '' } }))
       await refresh()
       onTradeCreated?.(Number(tradeId))
+    } catch (err) {
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Failed' } }))
+    }
+  }
+
+  async function handleExpire(offerId) {
+    if (!walletClient || !address) return
+    setActionState(s => ({ ...s, [offerId]: { loading: true, status: 'Expiring offer…', error: '' } }))
+    try {
+      const hash = await expireOffer(walletClient, offerId)
+      await waitForTransaction(hash)
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '✅ Offer expired, crypto returned', error: '' } }))
+      await refresh()
     } catch (err) {
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Failed' } }))
     }
@@ -126,6 +139,14 @@ export default function OfferBoard({ onTradeCreated }) {
                   <span className="label">Posted</span>
                   <span>{timeAgo(offer.created_at)}</span>
                 </div>
+                {offer.expires_at && (
+                  <div className="offer-meta-row">
+                    <span className="label">Expires</span>
+                    <span className={offerExpired(offer.expires_at) ? 'text-red' : 'text-yellow'}>
+                      {offerExpired(offer.expires_at) ? '⚠️ Expired' : `⏱ ${expiryCountdown(offer.expires_at)}`}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {state.status && (
@@ -145,6 +166,14 @@ export default function OfferBoard({ onTradeCreated }) {
                     disabled={state.loading}
                   >
                     {state.loading ? '⟳' : '✕ Cancel Offer'}
+                  </button>
+                ) : offerExpired(offer.expires_at) ? (
+                  <button
+                    className="btn btn-ghost btn-sm w-full"
+                    onClick={() => handleExpire(offer.offer_id)}
+                    disabled={state.loading || !address}
+                  >
+                    {state.loading ? '⟳' : '♻️ Expire & Return Funds'}
                   </button>
                 ) : (
                   <button
@@ -180,4 +209,17 @@ function timeAgo(ts) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return `${Math.floor(diff / 86400)}d ago`
+}
+
+function offerExpired(expiresAt) {
+  if (!expiresAt) return false
+  return Math.floor(Date.now() / 1000) > expiresAt
+}
+
+function expiryCountdown(expiresAt) {
+  const diff = expiresAt - Math.floor(Date.now() / 1000)
+  if (diff <= 0) return 'Expired'
+  const h = Math.floor(diff / 3600)
+  const m = Math.floor((diff % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m left` : `${m}m left`
 }

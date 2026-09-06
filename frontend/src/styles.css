@@ -442,3 +442,7 @@ body {
   .trade-progress { gap: 2px; }
   .tpstep-line { min-width: 10px; }
 }
+
+/* ── Offer expiry ── */
+.text-red    { color: var(--red);    font-size: 0.78rem; font-weight: 600; }
+.text-yellow { color: var(--yellow); font-size: 0.78rem; font-weight: 600; }

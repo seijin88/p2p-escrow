@@ -1,25 +1,16 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
-from datetime import datetime, timezone
+import datetime as _dt
 import json
 import typing
-
-# ── Native GEN transfer (same pattern as Edge-Predict) ────────────────────────
-# Every Intelligent Contract has a ghost contract on the EVM layer holding its
-# GEN balance. gl.evm.contract_interface gives a typed proxy whose emit_transfer
-# queues an outbound native transfer to any address or EOA.
-@gl.evm.contract_interface
-class _Recipient:
-    class View:
-        pass
-    class Write:
-        pass
 
 PAYMENT_WINDOW   = 3600        # 1 h  — buyer must mark_paid
 RELEASE_WINDOW   = 1800        # 30 min — seller must release after proof
 OFFER_EXPIRY     = 24 * 3600   # 24 h — offer auto-expires if no buyer locks
 MAX_RATE_DEV_PCT = 10          # ±10 % from live market
 SUPPORTED_TOKENS = ["GEN", "USDT"]
+MIN_REP_SCORE    = 80
+ZERO_ADDR        = "0x0000000000000000000000000000000000000000"
 
 
 class P2PEscrow(gl.Contract):
@@ -29,25 +20,43 @@ class P2PEscrow(gl.Contract):
     trade_counter       : u256
     buyer_active_trades : TreeMap[str, u256]
     seller_active_trades: TreeMap[str, u256]
+    reputation_contract : Address
+    owner               : Address
 
     def __init__(self) -> None:
         self.offer_counter = u256(0)
         self.trade_counter = u256(0)
+        self.reputation_contract = Address(ZERO_ADDR)
+        self.owner = gl.message.sender_address
+
+    # ── Admin ──────────────────────────────────────────────────────────────
+
+    @gl.public.write
+    def set_reputation_contract(self, addr: Address) -> None:
+        assert gl.message.sender_address == self.owner, "Only owner"
+        assert str(addr) != ZERO_ADDR, "Invalid address"
+        self.reputation_contract = addr
+
+    @gl.public.view
+    def get_reputation_contract(self) -> str:
+        return str(self.reputation_contract)
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
     def _now(self) -> int:
-        return int(datetime.now(timezone.utc).timestamp())
+        return int(_dt.datetime.now(_dt.timezone.utc).timestamp())
 
     def _load_offer(self, offer_id: u256) -> dict:
         try:
-            return json.loads(self.offers[offer_id])
+            val = self.offers[offer_id]
+            return json.loads(val) if isinstance(val, str) else val
         except Exception:
             return {}
 
     def _load_trade(self, trade_id: u256) -> dict:
         try:
-            return json.loads(self.trades[trade_id])
+            val = self.trades[trade_id]
+            return json.loads(val) if isinstance(val, str) else val
         except Exception:
             return {}
 
@@ -57,22 +66,57 @@ class P2PEscrow(gl.Contract):
     def _save_trade(self, trade_id: u256, data: dict) -> None:
         self.trades[trade_id] = json.dumps(data)
 
-    def _send(self, to: Address, amount: u256) -> None:
-        """Send native GEN via ghost contract emit_transfer (Edge-Predict pattern)."""
-        _Recipient(to).emit_transfer(value=amount)
+    @staticmethod
+    def _parse(val) -> dict:
+        """Parse JSON string or pass-through dict (gltest returns dict directly)."""
+        if isinstance(val, (dict, list)):
+            return val
+        return json.loads(val)
+
+    def _rep_set(self) -> bool:
+        return str(self.reputation_contract) != ZERO_ADDR
+
+    def _check_rep(self, trader: Address) -> None:
+        if not self._rep_set():
+            return
+        p = gl.call(self.reputation_contract, "get_trader_profile", trader)
+        if int(p.get("total_trades", 0)) >= 3:
+            if not (int(p.get("score", 100)) >= MIN_REP_SCORE):
+                assert False, "Reputation below minimum score"
+
+    def _transfer(self, to: Address, amount: u256) -> None:
+        """Transfer native token — compatible with both old and new SDK."""
+        try:
+            gl.transfer(to, amount)
+        except AttributeError:
+            # New SDK: use get_contract_at().emit_transfer()
+            gl.get_contract_at(to).emit_transfer(value=amount)
 
     def _release(self, trade_id: u256, trade: dict) -> None:
-        self._send(Address(trade["buyer"]), u256(int(trade["crypto_amount"])))
+        self._transfer(Address(trade["buyer"]), u256(int(trade["crypto_amount"])))
         self._close(trade_id, trade)
 
     def _refund(self, trade_id: u256, trade: dict) -> None:
-        self._send(Address(trade["seller"]), u256(int(trade["crypto_amount"])))
+        self._transfer(Address(trade["seller"]), u256(int(trade["crypto_amount"])))
         self._close(trade_id, trade)
 
     def _close(self, trade_id: u256, trade: dict) -> None:
         trade["status"]     = "settled"
         trade["settled_at"] = self._now()
         self._save_trade(trade_id, trade)
+        if not self._rep_set():
+            return
+        seller     = Address(trade["seller"])
+        buyer      = Address(trade["buyer"])
+        amt        = u256(int(trade["crypto_amount"]))
+        seller_won = trade["verdict"] == "refund"
+        disputed   = bool(trade.get("was_disputed", False))
+        if not disputed:
+            gl.call(self.reputation_contract, "record_successful_trade", seller, amt)
+            gl.call(self.reputation_contract, "record_successful_trade", buyer,  amt)
+        else:
+            gl.call(self.reputation_contract, "record_dispute_outcome", seller, seller_won,     amt)
+            gl.call(self.reputation_contract, "record_dispute_outcome", buyer,  not seller_won, amt)
 
     # ── Offer management ───────────────────────────────────────────────────
 
@@ -91,21 +135,22 @@ class P2PEscrow(gl.Contract):
         assert rate > u256(0), "Rate must be > 0"
         assert len(fiat_currency) >= 2, "Invalid fiat currency"
         assert len(payment_methods) >= 3, "Specify payment method"
+        self._check_rep(gl.message.sender_address)
 
         self.offer_counter = self.offer_counter + u256(1)
         oid = int(self.offer_counter)
         self._save_offer(u256(oid), {
-            "offer_id"       : oid,
-            "seller"         : str(gl.message.sender_address),
-            "token"          : token,
-            "crypto_amount"  : str(gl.message.value),
-            "fiat_currency"  : fiat_currency,
-            "fiat_amount"    : str(fiat_amount),
-            "rate"           : str(rate),
+            "offer_id": oid,
+            "seller": str(gl.message.sender_address),
+            "token": token,
+            "crypto_amount": str(gl.message.value),
+            "fiat_currency": fiat_currency,
+            "fiat_amount": str(fiat_amount),
+            "rate": str(rate),
             "payment_methods": payment_methods,
-            "status"         : "open",
-            "created_at"     : self._now(),
-            "expires_at"     : self._now() + OFFER_EXPIRY,
+            "status": "open",
+            "created_at": self._now(),
+            "expires_at": self._now() + OFFER_EXPIRY,
         })
         return u256(oid)
 
@@ -117,18 +162,18 @@ class P2PEscrow(gl.Contract):
         assert o["seller"] == str(gl.message.sender_address), "Only seller"
         o["status"] = "cancelled"
         self._save_offer(offer_id, o)
-        self._send(gl.message.sender_address, u256(int(o["crypto_amount"])))
+        self._transfer(gl.message.sender_address, u256(int(o["crypto_amount"])))
 
     @gl.public.write
     def expire_offer(self, offer_id: u256) -> None:
-        """Anyone can call after expiry — returns crypto to seller."""
+        """Anyone can call this after offer expiry window — returns crypto to seller."""
         o = self._load_offer(offer_id)
         assert o, "Offer not found"
         assert o["status"] == "open", "Not open"
         assert self._now() > o.get("expires_at", 0), "Offer not yet expired"
         o["status"] = "expired"
         self._save_offer(offer_id, o)
-        self._send(Address(o["seller"]), u256(int(o["crypto_amount"])))
+        self._transfer(Address(o["seller"]), u256(int(o["crypto_amount"])))
 
     # ── Trade lifecycle ────────────────────────────────────────────────────
 
@@ -139,6 +184,7 @@ class P2PEscrow(gl.Contract):
         assert o["status"] == "open", "Not available"
         assert o["seller"] != str(gl.message.sender_address), "Seller cannot buy"
         assert self._now() <= o.get("expires_at", 99999999999), "Offer has expired"
+        self._check_rep(gl.message.sender_address)
 
         token         = o["token"]
         fiat_currency = o["fiat_currency"]
@@ -157,7 +203,7 @@ class P2PEscrow(gl.Contract):
             page = gl.nondet.web.render(
                 f"https://www.coingecko.com/en/coins/{slug}"
             )[:2000]
-            return json.loads(gl.nondet.exec_prompt(prompt + "\n\nPage:\n" + page))
+            return self._parse(gl.nondet.exec_prompt(prompt + "\n\nPage:\n" + page))
 
         def validator_fn(lr) -> bool:
             if not isinstance(lr, gl.vm.Return):
@@ -168,42 +214,32 @@ class P2PEscrow(gl.Contract):
                 return False
 
         r = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
-        assert bool(r.get("within_limit", False)), "Rate rejected"
+        assert bool(r.get("within_limit", False)), "Rate rejected: deviation exceeds limit"
 
-        now   = self._now()
+        now = self._now()
         self.trade_counter = self.trade_counter + u256(1)
         tid   = int(self.trade_counter)
         buyer = str(gl.message.sender_address)
 
         self._save_trade(u256(tid), {
-            "trade_id"          : tid,
-            "offer_id"          : int(offer_id),
-            "seller"            : o["seller"],
-            "buyer"             : buyer,
-            "token"             : token,
-            "crypto_amount"     : o["crypto_amount"],
-            "fiat_currency"     : fiat_currency,
-            "fiat_amount"       : o["fiat_amount"],
-            "rate"              : o["rate"],
-            "market_rate_at_lock": str(r.get("market_rate", 0)),
-            "payment_methods"   : o["payment_methods"],
-            "proof_url"         : "",
-            "proof_locked"      : False,
-            "payment_deadline"  : now + PAYMENT_WINDOW,
-            "release_deadline"  : 0,
-            "verdict"           : "",
-            "verdict_reason"    : "",
-            "was_disputed"      : False,
-            "status"            : "active",
-            "created_at"        : now,
-            "settled_at"        : 0,
+            "trade_id": tid, "offer_id": int(offer_id),
+            "seller": o["seller"], "buyer": buyer,
+            "token": token, "crypto_amount": o["crypto_amount"],
+            "fiat_currency": fiat_currency, "fiat_amount": o["fiat_amount"],
+            "rate": o["rate"], "market_rate_at_lock": str(r.get("market_rate", 0)),
+            "payment_methods": o["payment_methods"],
+            "proof_url": "", "proof_locked": False,
+            "payment_deadline": now + PAYMENT_WINDOW, "release_deadline": 0,
+            "verdict": "", "verdict_reason": "",
+            "was_disputed": False, "status": "active",
+            "created_at": now, "settled_at": 0,
         })
 
-        o["status"]   = "taken"
+        o["status"] = "taken"
         o["trade_id"] = tid
         self._save_offer(offer_id, o)
 
-        self.buyer_active_trades[buyer]        = u256(tid)
+        self.buyer_active_trades[buyer]      = u256(tid)
         self.seller_active_trades[o["seller"]] = u256(tid)
         return u256(tid)
 
@@ -216,10 +252,10 @@ class P2PEscrow(gl.Contract):
         assert t["status"] == "active", "Not active"
         assert proof_url.startswith("http"), "Invalid URL"
         assert self._now() <= t["payment_deadline"], "Payment window expired"
-        t["proof_url"]        = proof_url
-        t["proof_locked"]     = True
+        t["proof_url"]      = proof_url
+        t["proof_locked"]   = True
         t["release_deadline"] = self._now() + RELEASE_WINDOW
-        t["status"]           = "paid"
+        t["status"]         = "paid"
         self._save_trade(trade_id, t)
 
     @gl.public.write
@@ -271,12 +307,12 @@ class P2PEscrow(gl.Contract):
         assert t["status"] == "disputed", "Not disputed"
         assert t["proof_locked"], "No proof submitted"
 
-        fiat_amt  = int(t["fiat_amount"])
-        fiat_cur  = t["fiat_currency"]
-        seller    = t["seller"]
-        methods   = t["payment_methods"]
-        token     = t["token"]
-        buyer     = t["buyer"]
+        fiat_amt = int(t["fiat_amount"])
+        fiat_cur = t["fiat_currency"]
+        seller   = t["seller"]
+        methods  = t["payment_methods"]
+        token    = t["token"]
+        buyer    = t["buyer"]
         proof_url = t["proof_url"]
 
         prompt = (
@@ -301,17 +337,14 @@ class P2PEscrow(gl.Contract):
                 proof = "Could not fetch proof URL."
             payload = json.dumps({
                 "trade": {
-                    "token"          : token,
-                    "crypto_amount"  : int(t["crypto_amount"]),
-                    "fiat_currency"  : fiat_cur,
-                    "fiat_amount"    : fiat_amt,
+                    "token": token, "crypto_amount": int(t["crypto_amount"]),
+                    "fiat_currency": fiat_cur, "fiat_amount": fiat_amt,
                     "payment_methods": methods,
-                    "seller_address" : seller,
-                    "buyer_address"  : buyer,
+                    "seller_address": seller, "buyer_address": buyer,
                 },
                 "proof_content": proof,
             }, ensure_ascii=False)
-            return json.loads(gl.nondet.exec_prompt(prompt + "\n\nInput:\n" + payload))
+            return self._parse(gl.nondet.exec_prompt(prompt + "\n\nInput:\n" + payload))
 
         def validator_fn(lr) -> bool:
             if not isinstance(lr, gl.vm.Return):
@@ -342,6 +375,7 @@ class P2PEscrow(gl.Contract):
 
     @gl.public.view
     def get_open_offers(self) -> typing.Any:
+        """Scan all offers and return those with status == open and not yet expired."""
         total  = int(self.offer_counter)
         now    = self._now()
         result = []
@@ -404,3 +438,5 @@ class P2PEscrow(gl.Contract):
             "total_trades": str(self.trade_counter),
             "open_offers" : n_open,
         }
+
+
