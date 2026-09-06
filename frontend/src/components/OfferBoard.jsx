@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import { getOpenOffers, getCounters, lockOrder, cancelOffer, expireOffer, getMyLatestTradeId, waitForTransaction } from '../p2pClient.js'
 
-export default function OfferBoard({ onTradeCreated }) {
+export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }) {
   const { address, walletClient } = useWallet()
   const [offers, setOffers]       = useState([])
   const [counters, setCounters]   = useState(null)
@@ -147,6 +147,13 @@ export default function OfferBoard({ onTradeCreated }) {
                     </span>
                   </div>
                 )}
+                {/* Bank info — only visible to buyer */}
+                {!isMine && offer.bank_name && (
+                  <div className="offer-bank">
+                    <strong>🏦 {offer.bank_name}</strong>
+                    <span>{offer.account_number} · a.n. {offer.account_name}</span>
+                  </div>
+                )}
               </div>
 
               {state.status && (
@@ -178,7 +185,10 @@ export default function OfferBoard({ onTradeCreated }) {
                 ) : (
                   <button
                     className="btn btn-primary offer-lock-btn"
-                    onClick={() => handleLock(offer.offer_id)}
+                    onClick={() => {
+                      if (!hasProfile) { onNeedProfile?.(); return }
+                      handleLock(offer.offer_id)
+                    }}
                     disabled={state.loading || !address}
                   >
                     {state.loading ? '⟳ AI verifying…' : '🔒 Buy — Lock Order'}

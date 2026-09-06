@@ -446,3 +446,59 @@ body {
 /* ── Offer expiry ── */
 .text-red    { color: var(--red);    font-size: 0.78rem; font-weight: 600; }
 .text-yellow { color: var(--yellow); font-size: 0.78rem; font-weight: 600; }
+
+/* ── Profile badge ── */
+.profile-badge {
+  padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+  border: none; cursor: pointer; transition: all .15s;
+}
+.profile-badge.registered {
+  background: rgba(63,185,80,.15); color: var(--green);
+  border: 1px solid rgba(63,185,80,.3);
+}
+.profile-badge.unregistered {
+  background: rgba(210,153,34,.15); color: var(--yellow);
+  border: 1px solid rgba(210,153,34,.3);
+}
+.profile-badge:hover { opacity: .8; }
+
+/* ── Profile banner ── */
+.profile-banner {
+  background: rgba(210,153,34,.1); border-top: 1px solid rgba(210,153,34,.3);
+  color: var(--yellow); padding: 8px 0; font-size: 0.82rem; text-align: center;
+}
+
+/* ── Register page ── */
+.register-page {
+  display: flex; align-items: flex-start; justify-content: center;
+  min-height: 60vh; padding: 24px 16px;
+}
+.register-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 28px; width: 100%; max-width: 480px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.register-header { display: flex; align-items: flex-start; gap: 12px; }
+.register-icon { font-size: 2rem; flex-shrink: 0; }
+.register-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+.register-desc { font-size: 0.82rem; color: var(--text-secondary); }
+
+/* ── Bank info in offer card ── */
+.offer-bank {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 8px 12px;
+  font-size: 0.78rem; color: var(--text-secondary);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.offer-bank strong { color: var(--text-primary); font-size: 0.85rem; }
+
+/* ── Bank info box in trade detail ── */
+.bank-info-box {
+  background: rgba(56,139,253,.07); border: 1px solid rgba(56,139,253,.25);
+  border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.bank-info-title { font-size: 0.9rem; font-weight: 700; color: var(--blue); }
+.bank-info-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+.bank-info-row .label { color: var(--text-muted); font-size: 0.75rem; }
+.bank-acct { font-family: monospace; font-size: 1rem; letter-spacing: .05em; color: var(--text-primary); }

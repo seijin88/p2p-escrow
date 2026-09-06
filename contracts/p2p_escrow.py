@@ -20,19 +20,47 @@ RELEASE_WINDOW   = 1800        # 30 min — seller must release after proof
 OFFER_EXPIRY     = 24 * 3600   # 24 h — offer auto-expires if no buyer locks
 MAX_RATE_DEV_PCT = 100         # relaxed for testing — tighten to 10 for production
 SUPPORTED_TOKENS = ["GEN", "USDT"]
+ZERO_ADDR        = "0x0000000000000000000000000000000000000000"
 
 
 class P2PEscrow(gl.Contract):
-    offers              : TreeMap[u256, str]
-    trades              : TreeMap[u256, str]
-    offer_counter       : u256
-    trade_counter       : u256
-    buyer_active_trades : TreeMap[str, u256]
-    seller_active_trades: TreeMap[str, u256]
+    offers               : TreeMap[u256, str]
+    trades               : TreeMap[u256, str]
+    offer_counter        : u256
+    trade_counter        : u256
+    buyer_active_trades  : TreeMap[str, u256]
+    seller_active_trades : TreeMap[str, u256]
+    user_profile_contract: Address
+    owner                : Address
 
     def __init__(self) -> None:
-        self.offer_counter = u256(0)
-        self.trade_counter = u256(0)
+        self.offer_counter         = u256(0)
+        self.trade_counter         = u256(0)
+        self.user_profile_contract = Address(ZERO_ADDR)
+        self.owner                 = gl.message.sender_address
+
+    # ── Admin ──────────────────────────────────────────────────────────────
+
+    @gl.public.write
+    def set_user_profile_contract(self, addr: Address) -> None:
+        assert gl.message.sender_address == self.owner, "Only owner"
+        assert str(addr) != ZERO_ADDR, "Invalid address"
+        self.user_profile_contract = addr
+
+    @gl.public.view
+    def get_user_profile_contract(self) -> str:
+        return str(self.user_profile_contract)
+
+    def _profile_set(self) -> bool:
+        return str(self.user_profile_contract) != ZERO_ADDR
+
+    def _require_profile(self, addr: Address) -> dict:
+        """Assert trader has registered profile, return it."""
+        if not self._profile_set():
+            return {}  # profile contract not set — skip check
+        profile = gl.call(self.user_profile_contract, "get_profile", str(addr))
+        assert profile is not None, "You must register your bank account profile before trading"
+        return profile
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -92,20 +120,26 @@ class P2PEscrow(gl.Contract):
         assert len(fiat_currency) >= 2, "Invalid fiat currency"
         assert len(payment_methods) >= 3, "Specify payment method"
 
+        # Require seller profile — embed bank info into offer for buyer visibility
+        seller_profile = self._require_profile(gl.message.sender_address)
+
         self.offer_counter = self.offer_counter + u256(1)
         oid = int(self.offer_counter)
         self._save_offer(u256(oid), {
-            "offer_id"       : oid,
-            "seller"         : str(gl.message.sender_address),
-            "token"          : token,
-            "crypto_amount"  : str(gl.message.value),
-            "fiat_currency"  : fiat_currency,
-            "fiat_amount"    : str(fiat_amount),
-            "rate"           : str(rate),
-            "payment_methods": payment_methods,
-            "status"         : "open",
-            "created_at"     : self._now(),
-            "expires_at"     : self._now() + OFFER_EXPIRY,
+            "offer_id"        : oid,
+            "seller"          : str(gl.message.sender_address),
+            "token"           : token,
+            "crypto_amount"   : str(gl.message.value),
+            "fiat_currency"   : fiat_currency,
+            "fiat_amount"     : str(fiat_amount),
+            "rate"            : str(rate),
+            "payment_methods" : payment_methods,
+            "bank_name"       : seller_profile.get("bank_name", ""),
+            "account_number"  : seller_profile.get("account_number", ""),
+            "account_name"    : seller_profile.get("account_name", ""),
+            "status"          : "open",
+            "created_at"      : self._now(),
+            "expires_at"      : self._now() + OFFER_EXPIRY,
         })
         return u256(oid)
 
@@ -139,6 +173,9 @@ class P2PEscrow(gl.Contract):
         assert o["status"] == "open", "Not available"
         assert o["seller"] != str(gl.message.sender_address), "Seller cannot buy"
         assert self._now() <= o.get("expires_at", 99999999999), "Offer has expired"
+
+        # Require buyer profile
+        buyer_profile = self._require_profile(gl.message.sender_address)
 
         token         = o["token"]
         fiat_currency = o["fiat_currency"]
@@ -192,6 +229,14 @@ class P2PEscrow(gl.Contract):
             "rate"              : o["rate"],
             "market_rate_at_lock": str(r.get("market_rate", 0)),
             "payment_methods"   : o["payment_methods"],
+            # Seller bank info (from offer, sourced from UserProfile)
+            "seller_bank_name"     : o.get("bank_name", ""),
+            "seller_account_number": o.get("account_number", ""),
+            "seller_account_name"  : o.get("account_name", ""),
+            # Buyer bank info (from UserProfile — for audit trail)
+            "buyer_bank_name"      : buyer_profile.get("bank_name", ""),
+            "buyer_account_number" : buyer_profile.get("account_number", ""),
+            "buyer_account_name"   : buyer_profile.get("account_name", ""),
             "proof_url"         : "",
             "proof_locked"      : False,
             "payment_deadline"  : now + PAYMENT_WINDOW,
@@ -283,6 +328,10 @@ class P2PEscrow(gl.Contract):
         token     = t["token"]
         buyer     = t["buyer"]
         proof_url = t["proof_url"]
+        # Use registered account name for stronger recipient verification
+        seller_account_name   = t.get("seller_account_name", seller)
+        seller_account_number = t.get("seller_account_number", "")
+        seller_bank_name      = t.get("seller_bank_name", "")
 
         prompt = (
             "You are an impartial AI arbiter for a P2P crypto-to-fiat escrow dispute. "
@@ -291,13 +340,20 @@ class P2PEscrow(gl.Contract):
             "\n1. TRANSACTION ID — a unique transfer/reference number must be present. "
             "\n2. EXACT AMOUNT   — must show exactly {amt} {cur}. "
             "\n3. CURRENCY       — must be {cur}. "
-            "\n4. RECIPIENT      — must be identifiable as seller {seller}. "
+            "\n4. RECIPIENT      — proof must show recipient name '{acct_name}' "
+            "(bank: {bank}, account: {acct_no}). "
             "\nPayment method must be one of: {methods}. "
             "\nIf ANY axis fails or proof is unreadable → REFUND. "
             '\nRespond ONLY valid JSON: {{"verdict":"release|refund",'
             '"tx_id_found":<bool>,"amount_matches":<bool>,"currency_matches":<bool>,'
             '"recipient_matches":<bool>,"reason":"<2-3 sentences>"}}'
-        ).format(amt=fiat_amt, cur=fiat_cur, seller=seller, methods=methods)
+        ).format(
+            amt=fiat_amt, cur=fiat_cur,
+            acct_name=seller_account_name,
+            bank=seller_bank_name,
+            acct_no=seller_account_number,
+            methods=methods,
+        )
 
         def leader_fn() -> typing.Any:
             try:

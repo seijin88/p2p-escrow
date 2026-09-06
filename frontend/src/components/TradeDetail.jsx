@@ -133,6 +133,29 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
         </div>
       )}
 
+      {/* Bank info for buyer — shown when active/paid */}
+      {isBuyer && trade.seller_bank_name && ['active', 'paid'].includes(trade.status) && (
+        <div className="bank-info-box">
+          <div className="bank-info-title">💳 Transfer to seller's account</div>
+          <div className="bank-info-row">
+            <span className="label">Bank</span>
+            <strong>{trade.seller_bank_name}</strong>
+          </div>
+          <div className="bank-info-row">
+            <span className="label">Account</span>
+            <strong className="bank-acct">{trade.seller_account_number}</strong>
+          </div>
+          <div className="bank-info-row">
+            <span className="label">Name</span>
+            <strong>{trade.seller_account_name}</strong>
+          </div>
+          <div className="bank-info-row">
+            <span className="label">Amount</span>
+            <strong className="amount-fiat">{Number(trade.fiat_amount).toLocaleString()} {trade.fiat_currency}</strong>
+          </div>
+        </div>
+      )}
+
       {/* Proof URL */}
       {trade.proof_url && (
         <div className="proof-box">

@@ -1,19 +1,52 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useWallet } from './WalletContext.jsx'
 import WalletConnect from './components/WalletConnect.jsx'
 import OfferBoard from './components/OfferBoard.jsx'
 import PostOfferForm from './components/PostOfferForm.jsx'
 import TradeDetail from './components/TradeDetail.jsx'
 import TradeHistory from './components/TradeHistory.jsx'
+import RegisterForm from './components/RegisterForm.jsx'
+import { isRegistered, getProfile } from './profileClient.js'
 
-// ── Simple client-side router (no react-router needed) ──────────────────────
-// view: 'board' | 'trade' | 'history' | 'reputation'
+// ── Simple client-side router ────────────────────────────────────────────────
+// view: 'board' | 'trade' | 'history'
 
 export default function App() {
   const { address, isWrongNetwork, switchToBradbury } = useWallet()
-  const [view, setView]             = useState('board')
-  const [activeTrade, setActiveTrade] = useState(null)   // trade_id number
+
+  const [view, setView]               = useState('board')
+  const [activeTrade, setActiveTrade] = useState(null)
   const [showPostForm, setShowPostForm] = useState(false)
+
+  // Profile state
+  const [profileChecked, setProfileChecked] = useState(false)
+  const [hasProfile, setHasProfile]         = useState(false)
+  const [userProfile, setUserProfile]       = useState(null)
+  const [showRegister, setShowRegister]     = useState(false)
+
+  // Check profile whenever wallet address changes
+  const checkProfile = useCallback(async () => {
+    if (!address) {
+      setProfileChecked(false)
+      setHasProfile(false)
+      setUserProfile(null)
+      return
+    }
+    try {
+      const registered = await isRegistered(address)
+      setHasProfile(!!registered)
+      if (registered) {
+        const p = await getProfile(address)
+        setUserProfile(p)
+      }
+    } catch {
+      setHasProfile(false)
+    } finally {
+      setProfileChecked(true)
+    }
+  }, [address])
+
+  useEffect(() => { checkProfile() }, [checkProfile])
 
   function goToTrade(tradeId) {
     setActiveTrade(tradeId)
@@ -25,9 +58,14 @@ export default function App() {
     setView('board')
   }
 
+  function handleRegistered() {
+    setShowRegister(false)
+    checkProfile()
+  }
+
   const NAV = [
-    { id: 'board',      label: '⚡ Offers',   desc: 'Open marketplace' },
-    { id: 'history',    label: '📋 History',  desc: 'All trades' },
+    { id: 'board',   label: '⚡ Offers',  desc: 'Open marketplace' },
+    { id: 'history', label: '📋 History', desc: 'All trades' },
   ]
 
   return (
@@ -57,6 +95,16 @@ export default function App() {
 
           <div className="header-right">
             <WalletConnect />
+            {/* Profile indicator */}
+            {address && profileChecked && (
+              <button
+                className={`profile-badge ${hasProfile ? 'registered' : 'unregistered'}`}
+                onClick={() => setShowRegister(true)}
+                title={hasProfile ? `${userProfile?.bank_name} ${userProfile?.account_number}` : 'Register bank account'}
+              >
+                {hasProfile ? `🏦 ${userProfile?.account_name?.split(' ')[0]}` : '⚠️ Register'}
+              </button>
+            )}
             <div className="network-badge">
               <span className="dot green" />
               Bradbury
@@ -67,13 +115,39 @@ export default function App() {
         {/* Wrong network banner */}
         {isWrongNetwork && (
           <div className="network-banner">
-            ⚠️ Wrong network detected.{' '}
+            ⚠️ Wrong network.{' '}
             <button className="banner-link" onClick={switchToBradbury}>
               Switch to GenLayer Testnet Bradbury →
             </button>
           </div>
         )}
+
+        {/* Profile not registered banner */}
+        {address && profileChecked && !hasProfile && !showRegister && (
+          <div className="profile-banner">
+            🏦 Register your bank account to post offers or lock orders.{' '}
+            <button className="banner-link" onClick={() => setShowRegister(true)}>
+              Register now →
+            </button>
+          </div>
+        )}
       </header>
+
+      {/* ── Register Modal ── */}
+      {showRegister && (
+        <div className="modal-overlay" onClick={() => setShowRegister(false)}>
+          <div onClick={e => e.stopPropagation()}>
+            <RegisterForm onRegistered={handleRegistered} />
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ margin: '8px auto', display: 'block' }}
+              onClick={() => setShowRegister(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Main content ── */}
       <main className="app-main">
@@ -83,9 +157,15 @@ export default function App() {
           <>
             <div className="page-actions">
               {address ? (
-                <button className="btn btn-primary" onClick={() => setShowPostForm(true)}>
-                  + Post Sell Offer
-                </button>
+                hasProfile ? (
+                  <button className="btn btn-primary" onClick={() => setShowPostForm(true)}>
+                    + Post Sell Offer
+                  </button>
+                ) : (
+                  <button className="btn btn-secondary" onClick={() => setShowRegister(true)}>
+                    🏦 Register Bank Account to Sell
+                  </button>
+                )
               ) : (
                 <div className="alert alert-info connect-prompt">
                   🔗 Connect your Rabby or MetaMask wallet to post offers or trade.
@@ -95,6 +175,8 @@ export default function App() {
 
             <OfferBoard
               onTradeCreated={(tradeId) => tradeId && goToTrade(tradeId)}
+              hasProfile={hasProfile}
+              onNeedProfile={() => setShowRegister(true)}
             />
           </>
         )}
@@ -104,9 +186,7 @@ export default function App() {
           <TradeDetail
             tradeId={activeTrade}
             onBack={goBack}
-            onSettled={() => {
-              // stay on trade page to show verdict, but refresh history
-            }}
+            onSettled={() => {}}
           />
         )}
 
@@ -121,6 +201,7 @@ export default function App() {
         <PostOfferForm
           onSuccess={() => setShowPostForm(false)}
           onClose={() => setShowPostForm(false)}
+          userProfile={userProfile}
         />
       )}
 
@@ -129,7 +210,7 @@ export default function App() {
         <p>
           P2P Escrow — Built on{' '}
           <a href="https://genlayer.com" target="_blank" rel="noreferrer">GenLayer</a>
-          {' '}· AI-verified · Trustless · Open source
+          {' '}· AI-verified · Trustless
         </p>
       </footer>
     </div>
