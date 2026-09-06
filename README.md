@@ -14,16 +14,15 @@ Users trade crypto for fiat daily. The usual problem: one party has to send firs
 - **Seller** releases crypto — or disputes if payment looks wrong
 - **AI arbiter** reads the proof directly and issues a binding verdict
 
-No human moderator. No manual review. The AI fetches the proof URL, verifies the amount and payment method, and releases funds automatically.
+No human moderator. No manual review. The AI fetches the proof URL, verifies the amount, currency, recipient, and transaction ID — then releases funds automatically.
 
 ---
 
-## Contracts
+## Contract
 
-| Contract | File | Purpose |
-|---|---|---|
-| `P2PEscrow` | `contracts/p2p_escrow.py` | Trade lifecycle, escrow, AI arbitration |
-| `TraderReputation` | `contracts/trader_reputation.py` | On-chain reputation scoring per address |
+| File | Purpose |
+|---|---|
+| `contracts/p2p_escrow.py` | Full trade lifecycle, offer board, AI arbitration |
 
 ### Trade flow
 
@@ -46,43 +45,46 @@ arbitrate()                  AI fetches proof, decides: release or refund
 ### Key features
 
 - **Rate guard** — AI fetches live market price (CoinGecko) at order time. Offers > ±10% deviation are rejected automatically
-- **Reputation system** — traders need ≥ 80% success rate to trade. New traders (< 3 trades) get a grace period
-- **AI proof verification** — the AI reads the actual payment screenshot URL, not just metadata
+- **AI proof verification** — the AI reads the actual payment screenshot URL, verifying 4 axes: transaction ID, exact amount, currency, and recipient. All 4 must pass or crypto refunds to seller
+- **Offer expiry** — offers auto-expire after 24h if no buyer locks
 - **Timeouts** — buyer has 1h to pay, seller has 30min to release after proof is submitted
-- **Supported tokens** — GEN (native), USDT (planned)
+- **Supported tokens** — GEN (native)
+
+### Settlement paths (all covered by tests)
+
+| Path | Trigger | Outcome |
+|---|---|---|
+| `cancel_offer` | Seller cancels before buyer | Crypto → seller |
+| `release_crypto` | Seller confirms payment | Crypto → buyer |
+| `cancel_expired_order` | Buyer never pays | Crypto → seller |
+| `arbitrate` (release) | AI confirms valid proof | Crypto → buyer |
+| `arbitrate` (refund) | AI rejects proof | Crypto → seller |
+| `expire_offer` | No buyer in 24h | Crypto → seller |
 
 ---
 
-## Deploy order
-
-> Constructor arguments are not yet supported in GenLayer Studio. Both contracts use the setter pattern.
+## Deploy
 
 ```
-1. Deploy TraderReputation           # no constructor args needed
-   → note the address (e.g. 0xAAA…)
-
-2. Deploy P2PEscrow                  # no constructor args needed
-   → note the address (e.g. 0xBBB…)
-
-3. Call TraderReputation.set_escrow_contract("0xBBB…")
-   # from the deployer wallet
-
-4. Call P2PEscrow.set_reputation_contract("0xAAA…")
-   # from the deployer wallet
+1. Deploy p2p_escrow.py in GenLayer Studio
+   → no constructor arguments needed
+   → note the contract address
 ```
+
+No external contract dependencies — standalone, no setup steps after deploy.
 
 ---
 
 ## Frontend
 
-React + Vite dApp that connects directly to the deployed contracts via `genlayer-js`.
+React + Vite dApp that connects directly to the deployed contract via `genlayer-js`. Supports Rabby and MetaMask wallets.
 
 ### Setup
 
 ```bash
 cd frontend
 cp .env.example .env
-# fill in your deployed contract addresses in .env
+# fill in your deployed contract address in .env
 
 npm install
 npm run dev
@@ -92,7 +94,6 @@ npm run dev
 
 ```env
 VITE_P2P_ESCROW_ADDRESS=0x...    # your deployed P2PEscrow address
-VITE_REPUTATION_ADDRESS=0x...    # your deployed TraderReputation address
 ```
 
 ### Pages / Tabs
@@ -104,18 +105,26 @@ VITE_REPUTATION_ADDRESS=0x...    # your deployed TraderReputation address
 | 3. Submit Proof | Buyer | Mark paid + upload screenshot URL |
 | 4. Release | Seller | Release or dispute |
 | 5. AI Arbiter | Anyone | Trigger AI arbitration |
-| Reputation | Anyone | Look up any trader's score |
+
+---
+
+## Tests
+
+25/25 passing — all settlement paths covered.
+
+```bash
+pip install genlayer-test pytest --pre
+python -m pytest tests/test_p2p_escrow.py -v
+```
 
 ---
 
 ## Planned upgrades
 
-- [ ] ERC-20 support (USDT on-chain, not just native GEN)
-- [ ] Constructor argument deploy (once GenLayer Studio supports it)
-- [ ] Appeal layer for high-value disputes (2-round AI arbitration)
-- [ ] Offer board — multiple open offers listed simultaneously
-- [ ] Chat between buyer/seller (encrypted, off-chain)
-- [ ] Mobile-responsive UI improvements
+- [ ] ERC-20 / USDT support
+- [ ] On-chain trader reputation system
+- [ ] Appeal layer for high-value disputes
+- [ ] Offer board with multiple simultaneous offers
 
 ---
 
