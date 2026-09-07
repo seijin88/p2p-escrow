@@ -32,6 +32,13 @@ export default function App() {
       setUserProfile(null)
       return
     }
+    // Skip profile check if contract not configured
+    const profileAddr = import.meta.env.VITE_USER_PROFILE_ADDRESS
+    if (!profileAddr || profileAddr === '0x0000000000000000000000000000000000000000') {
+      setHasProfile(true) // treat as registered when profile contract not deployed yet
+      setProfileChecked(true)
+      return
+    }
     try {
       const registered = await isRegistered(address)
       setHasProfile(!!registered)
