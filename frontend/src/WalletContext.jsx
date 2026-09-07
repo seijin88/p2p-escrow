@@ -34,9 +34,8 @@ export function WalletProvider({ children }) {
   function buildWalletClient(provider, addr) {
     return createClient({
       chain: testnetBradbury,
-      // Pass EIP-1193 provider — genlayer-js uses it to sign transactions
-      transport: provider,
       account: addr,
+      provider: provider,
     })
   }
 
