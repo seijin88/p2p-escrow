@@ -2,7 +2,7 @@ import { createClient } from 'genlayer-js'
 import { testnetBradbury } from 'genlayer-js/chains'
 
 export const USER_PROFILE_ADDRESS =
-  import.meta.env.VITE_USER_PROFILE_ADDRESS || '0x311E1DFbe166E32B76c2666fA7D394dF6B62c143'
+  import.meta.env.VITE_USER_PROFILE_ADDRESS || '0x90466D53c50c9F556Aa0624FaB3D6c9a5d93810a'
 
 export const publicClient = createClient({ chain: testnetBradbury })
 
