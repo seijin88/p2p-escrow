@@ -32,7 +32,11 @@ export default function RegisterForm({ onRegistered }) {
         // Transaction may already be accepted even if polling timed out
       }
       setStatus('✅ Profile registered!')
-      setTimeout(() => onRegistered?.(), 1200)
+      setTimeout(() => onRegistered?.({
+        bank_name: form.bankName,
+        account_number: form.accountNumber,
+        account_name: form.accountName,
+      }), 1200)
     } catch (err) {
       setError(err.message || 'Transaction failed')
     } finally {

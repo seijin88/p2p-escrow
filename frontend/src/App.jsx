@@ -65,9 +65,11 @@ export default function App() {
     setView('board')
   }
 
-  function handleRegistered() {
+  function handleRegistered(profileData) {
     setShowRegister(false)
-    checkProfile()
+    setHasProfile(true)  // optimistic update — transaction is accepted
+    if (profileData) setUserProfile(profileData)
+    checkProfile()       // also re-check in background
   }
 
   const NAV = [
