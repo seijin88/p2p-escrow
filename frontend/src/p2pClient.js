@@ -2,7 +2,10 @@ import { createClient, createPublicClient } from 'genlayer-js'
 import { testnetBradbury } from 'genlayer-js/chains'
 
 export const P2P_ESCROW_ADDRESS =
-  import.meta.env.VITE_P2P_ESCROW_ADDRESS || '0xa15c39aE653E638fee165C3CB403d020Ac264c55'
+  import.meta.env.VITE_P2P_ESCROW_ADDRESS || '0x06731B7F34dc8D24300f8884760F3ca0eB1F64e6'
+
+export const USER_PROFILE_ADDRESS =
+  import.meta.env.VITE_USER_PROFILE_ADDRESS || '0x311E1DFbe166E32B76c2666fA7D394dF6B62c143'
 
 // ── Public read-only client (no wallet needed) ────────────────────────────────
 export const publicClient = createClient({ chain: testnetBradbury })

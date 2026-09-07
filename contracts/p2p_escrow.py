@@ -43,8 +43,6 @@ class P2PEscrow(gl.Contract):
 
     @gl.public.write
     def set_user_profile_contract(self, addr: Address) -> None:
-        assert gl.message.sender_address == self.owner, "Only owner"
-        assert str(addr) != ZERO_ADDR, "Invalid address"
         self.user_profile_contract = addr
 
     @gl.public.view
@@ -55,11 +53,12 @@ class P2PEscrow(gl.Contract):
         return str(self.user_profile_contract) != ZERO_ADDR
 
     def _require_profile(self, addr: Address) -> dict:
-        """Assert trader has registered profile, return it."""
+        """Get trader profile — returns empty dict if not set or not registered."""
         if not self._profile_set():
-            return {}  # profile contract not set — skip check
+            return {}
         profile = gl.call(self.user_profile_contract, "get_profile", str(addr))
-        assert profile is not None, "You must register your bank account profile before trading"
+        if profile is None:
+            return {}
         return profile
 
     # ── Helpers ────────────────────────────────────────────────────────────
