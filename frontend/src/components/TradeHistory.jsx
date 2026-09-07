@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import { getTradeHistory, getMyActiveTrades } from '../p2pClient.js'
 
-export default function TradeHistory({ onViewTrade }) {
+export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
   const { address }         = useWallet()
-  const [tab, setTab]       = useState('all')   // 'all' | 'mine'
+  const [tab, setTab]       = useState(defaultTab)
   const [history, setHistory] = useState([])
   const [myTrades, setMyTrades] = useState([])
   const [total, setTotal]   = useState(0)
@@ -27,8 +27,17 @@ export default function TradeHistory({ onViewTrade }) {
     if (!address) return
     setLoading(true)
     try {
+      // Try both checksummed and lowercase to match contract storage format
       const data = await getMyActiveTrades(address)
-      setMyTrades(Array.isArray(data) ? data : [])
+      const arr = Array.isArray(data) ? data : []
+      // Also try checksummed version
+      if (arr.length === 0) {
+        const checksummed = address.toLowerCase()
+        const data2 = await getMyActiveTrades(checksummed)
+        setMyTrades(Array.isArray(data2) ? data2 : [])
+      } else {
+        setMyTrades(arr)
+      }
     } catch { /* silent */ }
     finally { setLoading(false) }
   }, [address])

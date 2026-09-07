@@ -71,8 +71,9 @@ export default function App() {
   }
 
   const NAV = [
-    { id: 'board',   label: '⚡ Offers',  desc: 'Open marketplace' },
-    { id: 'history', label: '📋 History', desc: 'All trades' },
+    { id: 'board',   label: '⚡ Offers',   desc: 'Open marketplace' },
+    { id: 'mytrades', label: '🔄 My Trades', desc: 'Active trades' },
+    { id: 'history', label: '📋 History',  desc: 'All trades' },
   ]
 
   return (
@@ -200,6 +201,11 @@ export default function App() {
         {/* HISTORY */}
         {view === 'history' && (
           <TradeHistory onViewTrade={(tradeId) => goToTrade(tradeId)} />
+        )}
+
+        {/* MY TRADES */}
+        {view === 'mytrades' && (
+          <TradeHistory onViewTrade={(tradeId) => goToTrade(tradeId)} defaultTab="mine" />
         )}
       </main>
 
