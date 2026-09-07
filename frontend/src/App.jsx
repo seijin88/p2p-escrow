@@ -32,22 +32,26 @@ export default function App() {
       setUserProfile(null)
       return
     }
-    // Skip profile check if contract not configured
     const profileAddr = import.meta.env.VITE_USER_PROFILE_ADDRESS
     if (!profileAddr || profileAddr === '0x0000000000000000000000000000000000000000') {
-      setHasProfile(true) // treat as registered when profile contract not deployed yet
+      setHasProfile(true)
       setProfileChecked(true)
       return
     }
     try {
       const registered = await isRegistered(address)
-      setHasProfile(!!registered)
+      // Only update if registered — don't override optimistic true with false
+      // (transaction may be accepted but not finalized yet)
       if (registered) {
+        setHasProfile(true)
         const p = await getProfile(address)
-        setUserProfile(p)
+        if (p) setUserProfile(p)
+      } else {
+        // Only set false if we haven't already optimistically set true
+        setHasProfile(prev => prev ? prev : false)
       }
     } catch {
-      setHasProfile(false)
+      // On error, don't reset — keep existing state
     } finally {
       setProfileChecked(true)
     }
