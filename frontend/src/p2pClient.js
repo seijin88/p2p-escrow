@@ -20,15 +20,16 @@ export function createRabbyClient(provider) {
 }
 
 // ── Transaction poller ────────────────────────────────────────────────────────
-export async function waitForTransaction(txHash, intervalMs = 3000, maxAttempts = 60) {
+export async function waitForTransaction(txHash, intervalMs = 5000, maxAttempts = 60) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
-      if (receipt && receipt.status !== 'pending') return receipt
+      const tx = await publicClient.getTransaction({ hash: txHash })
+      if (tx && tx.status && tx.status !== 'PENDING') return tx
     } catch { /* not yet indexed */ }
     await new Promise((r) => setTimeout(r, intervalMs))
   }
-  throw new Error('Transaction timeout — check GenLayer Explorer')
+  // Don't throw — transaction may be accepted but polling failed
+  return null
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

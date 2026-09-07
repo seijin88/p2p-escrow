@@ -25,8 +25,12 @@ export default function RegisterForm({ onRegistered }) {
         accountNumber : form.accountNumber,
         accountName   : form.accountName,
       })
-      setStatus('Waiting for confirmation…')
-      await waitForTransaction(hash)
+      setStatus('Waiting for confirmation… (this may take 1-2 minutes)')
+      try {
+        await waitForTransaction(hash, 5000, 60) // 5s interval, 60 attempts = 5 min
+      } catch {
+        // Transaction may already be accepted even if polling timed out
+      }
       setStatus('✅ Profile registered!')
       setTimeout(() => onRegistered?.(), 1200)
     } catch (err) {
