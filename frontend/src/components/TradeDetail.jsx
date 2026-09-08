@@ -192,6 +192,15 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
         <div className="trade-actions">
           <h4 className="actions-title">Actions</h4>
 
+          {/* Debug info — remove after testing */}
+          {!isSeller && !isBuyer && address && (
+            <div className="alert alert-warning" style={{fontSize:'0.75rem', wordBreak:'break-all'}}>
+              ⚠️ Your wallet: {address}<br/>
+              Seller: {trade.seller}<br/>
+              Buyer: {trade.buyer}
+            </div>
+          )}
+
           {/* Buyer: mark paid */}
           {isBuyer && trade.status === 'active' && !payDeadlinePassed && (
             <div className="action-block">
