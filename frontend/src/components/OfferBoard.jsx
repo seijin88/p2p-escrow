@@ -30,9 +30,10 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
       const receipt = await waitForTransaction(hash)
       // Fix 4: recover trade_id immediately after lock
       const tradeId = await getMyLatestTradeId(address, 'buyer')
-      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '✅ Order locked!', error: '' } }))
+      const tid = Number(tradeId)
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: `✅ Order locked! Redirecting to Trade #${tid}…`, error: '' } }))
       await refresh()
-      onTradeCreated?.(Number(tradeId))
+      onTradeCreated?.(tid)
     } catch (err) {
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Failed' } }))
     }
@@ -159,6 +160,15 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
               {state.status && (
                 <div className={`alert ${state.error ? 'alert-error' : 'alert-info'} offer-alert`}>
                   {state.status}
+                  {state.tradeId > 0 && (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      style={{ marginTop: 8, width: '100%' }}
+                      onClick={() => onTradeCreated?.(state.tradeId)}
+                    >
+                      📋 View Trade #{state.tradeId}
+                    </button>
+                  )}
                 </div>
               )}
               {state.error && (

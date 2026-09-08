@@ -188,7 +188,14 @@ export default function App() {
             </div>
 
             <OfferBoard
-              onTradeCreated={(tradeId) => tradeId && goToTrade(tradeId)}
+              onTradeCreated={(tradeId) => {
+                if (tradeId && tradeId > 0) {
+                  goToTrade(tradeId)
+                } else {
+                  // Fallback: go to My Trades tab
+                  setView('mytrades')
+                }
+              }}
               hasProfile={hasProfile}
               onNeedProfile={() => setShowRegister(true)}
             />
