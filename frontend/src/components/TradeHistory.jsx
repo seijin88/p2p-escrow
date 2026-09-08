@@ -27,22 +27,39 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
     if (!address) return
     setLoading(true)
     try {
-      // Contract stores address as str(gl.message.sender_address) — checksummed hex
-      // Try the address as-is first, then also scan all history for matches
-      const active = await getMyActiveTrades(address)
-      const activeArr = Array.isArray(active) ? active : []
+      // Try both address formats — contract may store checksummed or lowercase
+      const results = await Promise.allSettled([
+        getMyActiveTrades(address),
+        getMyActiveTrades(address.toLowerCase()),
+      ])
 
-      // Also get all settled trades and filter for this address
-      const historyData = await getTradeHistory(0, 50)
-      const settled = (historyData?.trades || []).filter(t =>
+      const seen = new Set()
+      const allActive = []
+      for (const r of results) {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          for (const t of r.value) {
+            const key = String(t.trade_id)
+            if (!seen.has(key)) { seen.add(key); allActive.push(t) }
+          }
+        }
+      }
+
+      // Also scan history for settled trades matching this address
+      const historyData = await getTradeHistory(0, 100)
+      const allTrades = historyData?.trades || []
+      const mySettled = allTrades.filter(t =>
         t.seller?.toLowerCase() === address.toLowerCase() ||
         t.buyer?.toLowerCase()  === address.toLowerCase()
       )
+      for (const t of mySettled) {
+        const key = String(t.trade_id)
+        if (!seen.has(key)) { seen.add(key); allActive.push(t) }
+      }
 
-      // Combine: active first, then settled
-      setMyTrades([...activeArr, ...settled])
-    } catch { /* silent */ }
-    finally { setLoading(false) }
+      setMyTrades(allActive)
+    } catch (e) {
+      console.error('fetchMine error:', e)
+    } finally { setLoading(false) }
   }, [address])
 
   useEffect(() => {
