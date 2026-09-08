@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '../WalletContext.jsx'
-import { getTradeHistory, getMyActiveTrades } from '../p2pClient.js'
+import { getTradeHistory, getMyActiveTrades, getMyLatestTradeId, getTrade } from '../p2pClient.js'
 
 export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
   const { address }         = useWallet()
@@ -57,6 +57,23 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
       }
 
       setMyTrades(allActive)
+
+      // Fallback: also try to get latest trade by ID directly
+      if (allActive.length === 0) {
+        try {
+          const latestBuyer = await getMyLatestTradeId(address, 'buyer')
+          const latestSeller = await getMyLatestTradeId(address, 'seller')
+          const ids = [...new Set([Number(latestBuyer), Number(latestSeller)].filter(id => id > 0))]
+          const directTrades = []
+          for (const id of ids) {
+            try {
+              const t = await getTrade(id)
+              if (t && t.trade_id) directTrades.push(t)
+            } catch {}
+          }
+          if (directTrades.length > 0) setMyTrades(directTrades)
+        } catch {}
+      }
     } catch (e) {
       console.error('fetchMine error:', e)
     } finally { setLoading(false) }
@@ -80,6 +97,9 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
           </button>
           <button className={`htab ${tab === 'mine' ? 'active' : ''}`} onClick={() => setTab('mine')} disabled={!address}>
             👤 My Trades (Active + Settled)
+          </button>
+          <button className="htab" onClick={() => tab === 'mine' ? fetchMine() : fetchAll(0)} style={{marginLeft:'auto'}}>
+            ↻ Refresh
           </button>
         </div>
       </div>
