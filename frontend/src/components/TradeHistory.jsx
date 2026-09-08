@@ -27,17 +27,20 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
     if (!address) return
     setLoading(true)
     try {
-      // Try both checksummed and lowercase to match contract storage format
-      const data = await getMyActiveTrades(address)
-      const arr = Array.isArray(data) ? data : []
-      // Also try checksummed version
-      if (arr.length === 0) {
-        const checksummed = address.toLowerCase()
-        const data2 = await getMyActiveTrades(checksummed)
-        setMyTrades(Array.isArray(data2) ? data2 : [])
-      } else {
-        setMyTrades(arr)
-      }
+      // Contract stores address as str(gl.message.sender_address) — checksummed hex
+      // Try the address as-is first, then also scan all history for matches
+      const active = await getMyActiveTrades(address)
+      const activeArr = Array.isArray(active) ? active : []
+
+      // Also get all settled trades and filter for this address
+      const historyData = await getTradeHistory(0, 50)
+      const settled = (historyData?.trades || []).filter(t =>
+        t.seller?.toLowerCase() === address.toLowerCase() ||
+        t.buyer?.toLowerCase()  === address.toLowerCase()
+      )
+
+      // Combine: active first, then settled
+      setMyTrades([...activeArr, ...settled])
     } catch { /* silent */ }
     finally { setLoading(false) }
   }, [address])
@@ -56,10 +59,10 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
         <h2 className="board-title">📋 Trade History</h2>
         <div className="history-tabs">
           <button className={`htab ${tab === 'all' ? 'active' : ''}`} onClick={() => setTab('all')}>
-            All Settled
+            🏁 All Settled
           </button>
           <button className={`htab ${tab === 'mine' ? 'active' : ''}`} onClick={() => setTab('mine')} disabled={!address}>
-            My Trades
+            👤 My Trades (Active + Settled)
           </button>
         </div>
       </div>
