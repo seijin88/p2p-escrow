@@ -10,6 +10,7 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
   const [total, setTotal]   = useState(0)
   const [page, setPage]     = useState(0)
   const [loading, setLoading] = useState(false)
+  const [directId, setDirectId] = useState('')
   const PAGE_SIZE = 10
 
   const fetchAll = useCallback(async (pg = 0) => {
@@ -132,6 +133,26 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
           </button>
         </div>
       )}
+      {/* Direct trade lookup by ID */}
+      <div style={{marginTop:16, padding:'12px 16px', background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:'var(--r)', display:'flex', gap:8, alignItems:'center'}}>
+        <span style={{fontSize:'0.82rem', color:'var(--text-muted)', flexShrink:0}}>Go to Trade #</span>
+        <input
+          className="input"
+          type="number"
+          min="1"
+          placeholder="Enter trade ID…"
+          value={directId}
+          onChange={e => setDirectId(e.target.value)}
+          style={{flex:1}}
+        />
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={!directId}
+          onClick={() => directId && onViewTrade?.(Number(directId))}
+        >
+          View
+        </button>
+      </div>
     </div>
   )
 }
