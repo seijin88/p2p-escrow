@@ -502,3 +502,38 @@ body {
 .bank-info-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
 .bank-info-row .label { color: var(--text-muted); font-size: 0.75rem; }
 .bank-acct { font-family: monospace; font-size: 1rem; letter-spacing: .05em; color: var(--text-primary); }
+
+/* -- IPFS Dropzone ----------------------------------------------------------- */
+.ipfs-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--r);
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  background: var(--bg-surface);
+  margin-bottom: 10px;
+  user-select: none;
+}
+.ipfs-dropzone:hover,
+.ipfs-dropzone:focus {
+  border-color: var(--blue);
+  background: rgba(56,139,253,.06);
+  outline: none;
+}
+.ipfs-dropzone.drag-active {
+  border-color: var(--blue);
+  background: rgba(56,139,253,.12);
+}
+.ipfs-dropzone.uploading {
+  opacity: .7;
+  cursor: default;
+}
+.ipfs-drop-text {
+  font-size: .85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.ipfs-drop-text u { color: var(--blue); }
+.ipfs-drop-text small { color: var(--text-muted); font-size: .75rem; }
+.ipfs-drop-success { color: var(--green) !important; font-weight: 600; }
