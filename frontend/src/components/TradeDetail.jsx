@@ -192,19 +192,12 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
         <div className="trade-actions">
           <h4 className="actions-title">Actions</h4>
 
-          {/* Debug info — remove after testing */}
-          {!isSeller && !isBuyer && address && (
-            <div className="alert alert-warning" style={{fontSize:'0.75rem', wordBreak:'break-all'}}>
-              ⚠️ Your wallet: {address}<br/>
-              Seller: {trade.seller}<br/>
-              Buyer: {trade.buyer}
-            </div>
-          )}
-
-          {/* Buyer: mark paid */}
-          {isBuyer && trade.status === 'active' && !payDeadlinePassed && (
+          {/* Buyer: mark paid — show if active and connected */}
+          {trade.status === 'active' && !payDeadlinePassed && (
             <div className="action-block">
-              <p className="action-desc">Pay the seller off-chain ({trade.payment_methods}), then upload your proof screenshot.</p>
+              <p className="action-desc">
+                {isBuyer ? `Pay the seller off-chain (${trade.payment_methods}), then upload your proof screenshot.` : '⚠️ Only the buyer should submit proof.'}
+              </p>
               <div className="proof-input-row">
                 <input
                   className="input"
@@ -224,10 +217,12 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
             </div>
           )}
 
-          {/* Seller: release or dispute */}
-          {isSeller && trade.status === 'paid' && (
+          {/* Seller: release or dispute — show if paid and connected */}
+          {trade.status === 'paid' && (
             <div className="action-block">
-              <p className="action-desc">Check the buyer's proof above. Release if payment is confirmed, or dispute if something's wrong.</p>
+              <p className="action-desc">
+                {isSeller ? 'Check the proof above. Release if confirmed, or dispute.' : '⚠️ Only the seller should release or dispute.'}
+              </p>
               <div className="action-row">
                 <button className="btn btn-accent flex-1"
                   disabled={actionLoading}
