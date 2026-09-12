@@ -23,5 +23,27 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements-test.txt
 
+      - name: Pre-cache GenVM binary (workaround for missing genvm-universal asset)
+        run: |
+          # genlayer-test expects genvm-universal.tar.xz but the release only ships
+          # platform-specific archives. We download the linux-amd64 build and
+          # place it where the SDK loader will find it so it skips the download.
+          GENVM_VERSION=$(python -c "
+          import urllib.request, json
+          resp = urllib.request.urlopen('https://api.github.com/repos/genlayerlabs/genvm/releases/latest')
+          data = json.load(resp)
+          print(data['tag_name'])
+          ")
+          echo "GenVM version: $GENVM_VERSION"
+
+          CACHE_DIR="$HOME/.cache/genlayer/genvm"
+          mkdir -p "$CACHE_DIR"
+
+          # Download the linux-amd64 build
+          LINUX_URL="https://github.com/genlayerlabs/genvm/releases/download/${GENVM_VERSION}/genvm-linux-amd64.tar.xz"
+          echo "Downloading $LINUX_URL"
+          curl -fsSL -o "$CACHE_DIR/genvm-universal-${GENVM_VERSION}.tar.xz" "$LINUX_URL"
+          echo "Cached as genvm-universal-${GENVM_VERSION}.tar.xz"
+
       - name: Run tests
         run: python -m pytest tests/test_p2p_escrow.py -v --tb=short
