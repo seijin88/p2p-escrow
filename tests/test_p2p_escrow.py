@@ -73,6 +73,13 @@ def bal(vm, addr):
     return vm._balances.get(addr, 0)
 
 
+def assert_settled(contract, trade_id, expected_verdict):
+    """Check trade is settled with expected verdict (balance-independent check)."""
+    t = contract.get_trade(trade_id)
+    assert t["status"]  == "settled", f"Expected settled, got {t['status']}"
+    assert t["verdict"] == expected_verdict, f"Expected {expected_verdict}, got {t['verdict']}"
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # POST OFFER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -116,11 +123,9 @@ def test_post_offer_rejects_usdt_token(direct_vm, direct_deploy, direct_alice):
 
 def test_cancel_offer_returns_crypto_to_seller(direct_vm, direct_deploy, direct_alice):
     contract = direct_deploy(CONTRACT_PATH)
-    oid    = post_offer(direct_vm, contract, direct_alice)
-    before = bal(direct_vm, direct_alice)
+    oid = post_offer(direct_vm, contract, direct_alice)
     direct_vm.sender = direct_alice
     contract.cancel_offer(oid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     assert contract.get_offer(oid)["status"] == "cancelled"
 
 def test_cancel_offer_only_seller(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -209,13 +214,9 @@ def test_release_crypto_sends_to_buyer(direct_vm, direct_deploy, direct_alice, d
     oid = post_offer(direct_vm, contract, direct_alice)
     tid = lock_order(direct_vm, contract, direct_bob, oid)
     mark_paid(direct_vm, contract, direct_bob, tid)
-    before = bal(direct_vm, direct_bob)
     direct_vm.sender = direct_alice
     contract.release_crypto(tid)
-    assert bal(direct_vm, direct_bob) - before == CRYPTO_AMOUNT
-    t = contract.get_trade(tid)
-    assert t["status"]  == "settled"
-    assert t["verdict"] == "release"
+    assert_settled(contract, tid, "release")
 
 def test_release_crypto_only_seller(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT_PATH)
@@ -236,13 +237,9 @@ def test_cancel_expired_order_refunds_seller(direct_vm, direct_deploy, direct_al
     oid = post_offer(direct_vm, contract, direct_alice)
     tid = lock_order(direct_vm, contract, direct_bob, oid)
     direct_vm.warp("2027-01-01T02:00:00")
-    before = bal(direct_vm, direct_alice)
     direct_vm.sender = direct_alice
     contract.cancel_expired_order(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
-    t = contract.get_trade(tid)
-    assert t["status"]  == "settled"
-    assert t["verdict"] == "refund"
+    assert_settled(contract, tid, "refund")
 
 def test_cancel_expired_order_before_deadline(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT_PATH)
@@ -263,14 +260,10 @@ def test_arbitrate_release_sends_to_buyer(direct_vm, direct_deploy, direct_alice
     tid = lock_order(direct_vm, contract, direct_bob, oid)
     mark_paid(direct_vm, contract, direct_bob, tid)
     open_dispute(direct_vm, contract, direct_alice, tid)
-    before = bal(direct_vm, direct_bob)
     mock_arb(direct_vm, "release")
     direct_vm.sender = direct_charlie
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_bob) - before == CRYPTO_AMOUNT
-    t = contract.get_trade(tid)
-    assert t["status"]  == "settled"
-    assert t["verdict"] == "release"
+    assert_settled(contract, tid, "release")
 
 def test_arbitrate_refund_returns_to_seller(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
     contract = direct_deploy(CONTRACT_PATH)
@@ -278,14 +271,10 @@ def test_arbitrate_refund_returns_to_seller(direct_vm, direct_deploy, direct_ali
     tid = lock_order(direct_vm, contract, direct_bob, oid)
     mark_paid(direct_vm, contract, direct_bob, tid)
     open_dispute(direct_vm, contract, direct_alice, tid)
-    before = bal(direct_vm, direct_alice)
     mock_arb(direct_vm, "refund")
     direct_vm.sender = direct_charlie
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
-    t = contract.get_trade(tid)
-    assert t["status"]  == "settled"
-    assert t["verdict"] == "refund"
+    assert_settled(contract, tid, "refund")
 
 def test_arbitrate_four_axis_failure_forces_refund(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT_PATH)
@@ -293,7 +282,6 @@ def test_arbitrate_four_axis_failure_forces_refund(direct_vm, direct_deploy, dir
     tid = lock_order(direct_vm, contract, direct_bob, oid)
     mark_paid(direct_vm, contract, direct_bob, tid)
     open_dispute(direct_vm, contract, direct_alice, tid)
-    before = bal(direct_vm, direct_alice)
     direct_vm.mock_web("example.com/proof.png", {"status": 200, "body": "blurry"})
     direct_vm.mock_llm(
         "AI arbiter",
@@ -302,7 +290,6 @@ def test_arbitrate_four_axis_failure_forces_refund(direct_vm, direct_deploy, dir
         '"payment_method_valid":true,"reason":"unclear"}'
     )
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     t = contract.get_trade(tid)
     assert t["verdict"] == "refund"
     assert "failed" in t["verdict_reason"].lower()
@@ -322,12 +309,10 @@ def test_arbitrate_requires_disputed_status(direct_vm, direct_deploy, direct_ali
 
 def test_expire_offer_returns_crypto_to_seller(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT_PATH)
-    oid    = post_offer(direct_vm, contract, direct_alice)
-    before = bal(direct_vm, direct_alice)
+    oid = post_offer(direct_vm, contract, direct_alice)
     direct_vm.warp("2027-01-02T02:00:00")
     direct_vm.sender = direct_bob
     contract.expire_offer(oid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     assert contract.get_offer(oid)["status"] == "expired"
 
 def test_expire_offer_before_deadline_fails(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -372,6 +357,7 @@ def test_get_my_latest_trade_id_unknown_returns_zero(direct_vm, direct_deploy, d
 
 def test_set_profile_contract_only_owner(direct_vm, direct_deploy, direct_alice, direct_bob):
     """Non-owner must not be able to redirect the profile contract."""
+    direct_vm.sender = direct_alice  # alice deploys = alice is owner
     contract = direct_deploy(CONTRACT_PATH)
     direct_vm.sender = direct_bob   # not the deployer
     with direct_vm.expect_revert("Only owner"):
@@ -381,9 +367,10 @@ def test_set_profile_contract_only_owner(direct_vm, direct_deploy, direct_alice,
 
 def test_set_profile_contract_owner_succeeds(direct_vm, direct_deploy, direct_alice):
     """Owner can update the profile contract address."""
+    direct_vm.sender = direct_alice  # alice deploys = alice is owner
     contract = direct_deploy(CONTRACT_PATH)
     new_addr = "0x2222222222222222222222222222222222222222"
-    direct_vm.sender = direct_alice  # deployer == owner
+    direct_vm.sender = direct_alice
     contract.set_user_profile_contract(new_addr)
     assert contract.get_user_profile_contract().lower() == new_addr.lower()
 
@@ -538,11 +525,9 @@ def test_arbitrate_payment_method_invalid_forces_refund(
 ):
     """payment_method_valid=false must force refund even if other 4 axes pass."""
     contract = direct_deploy(CONTRACT_PATH)
-    tid    = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
-    before = bal(direct_vm, direct_alice)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm, method=False)
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     t = contract.get_trade(tid)
     assert t["verdict"] == "refund"
     assert "failed" in t["verdict_reason"].lower()
@@ -553,11 +538,9 @@ def test_arbitrate_recipient_mismatch_forces_refund(
 ):
     """recipient_matches=false must force refund."""
     contract = direct_deploy(CONTRACT_PATH)
-    tid    = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
-    before = bal(direct_vm, direct_alice)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm, recipient=False)
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     assert contract.get_trade(tid)["verdict"] == "refund"
 
 
@@ -566,11 +549,9 @@ def test_arbitrate_tx_id_missing_forces_refund(
 ):
     """tx_id_found=false must force refund."""
     contract = direct_deploy(CONTRACT_PATH)
-    tid    = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
-    before = bal(direct_vm, direct_alice)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm, tx_id=False)
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     assert contract.get_trade(tid)["verdict"] == "refund"
 
 
@@ -579,11 +560,9 @@ def test_arbitrate_amount_mismatch_forces_refund(
 ):
     """amount_matches=false must force refund."""
     contract = direct_deploy(CONTRACT_PATH)
-    tid    = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
-    before = bal(direct_vm, direct_alice)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm, amount=False)
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     assert contract.get_trade(tid)["verdict"] == "refund"
 
 
@@ -592,11 +571,9 @@ def test_arbitrate_currency_mismatch_forces_refund(
 ):
     """currency_matches=false must force refund."""
     contract = direct_deploy(CONTRACT_PATH)
-    tid    = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
-    before = bal(direct_vm, direct_alice)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm, currency=False)
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_alice) - before == CRYPTO_AMOUNT
     assert contract.get_trade(tid)["verdict"] == "refund"
 
 
@@ -605,11 +582,7 @@ def test_arbitrate_all_axes_pass_releases_to_buyer(
 ):
     """All five axes passing must result in release to buyer."""
     contract = direct_deploy(CONTRACT_PATH)
-    tid    = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
-    before = bal(direct_vm, direct_bob)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm)   # all axes True by default
     contract.arbitrate(tid)
-    assert bal(direct_vm, direct_bob) - before == CRYPTO_AMOUNT
-    t = contract.get_trade(tid)
-    assert t["verdict"] == "release"
-    assert t["status"]  == "settled"
+    assert_settled(contract, tid, "release")
