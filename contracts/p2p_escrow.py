@@ -76,8 +76,11 @@ class P2PEscrow(gl.Contract):
         self.trades[trade_id] = json.dumps(data)
 
     def _send(self, to: Address, amount: u256) -> None:
-        """Send native GEN — gl.transfer works in both direct mode and on-chain."""
-        gl.transfer(to, amount)
+        """Send native GEN — compatible with both SDK variants and direct mode."""
+        try:
+            gl.transfer(to, amount)
+        except AttributeError:
+            gl.get_contract_at(to).emit_transfer(value=amount)
 
     def _release(self, trade_id: u256, trade: dict) -> None:
         self._send(Address(trade["buyer"]), u256(int(trade["crypto_amount"])))
