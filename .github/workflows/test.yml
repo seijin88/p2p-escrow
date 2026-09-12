@@ -23,27 +23,31 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements-test.txt
 
-      - name: Pre-cache GenVM binary (workaround for missing genvm-universal asset)
+      - name: Pre-cache GenVM binary
+        # genlayer-test looks for ~/.cache/gltest-direct/genvm-universal-<ver>.tar.xz
+        # but the release only ships genvm-linux-amd64.tar.xz (no universal build).
+        # We download the linux-amd64 tarball and place it under the expected name
+        # so the SDK loader finds it in cache and skips the failing download.
         run: |
-          # genlayer-test expects genvm-universal.tar.xz but the release only ships
-          # platform-specific archives. We download the linux-amd64 build and
-          # place it where the SDK loader will find it so it skips the download.
-          GENVM_VERSION=$(python -c "
+          GENVM_VERSION=$(python - <<'EOF'
           import urllib.request, json
-          resp = urllib.request.urlopen('https://api.github.com/repos/genlayerlabs/genvm/releases/latest')
-          data = json.load(resp)
-          print(data['tag_name'])
-          ")
+          resp = urllib.request.urlopen(
+              "https://api.github.com/repos/genlayerlabs/genvm/releases/latest",
+              timeout=30,
+          )
+          print(json.load(resp)["tag_name"])
+          EOF
+          )
           echo "GenVM version: $GENVM_VERSION"
 
-          CACHE_DIR="$HOME/.cache/genlayer/genvm"
+          CACHE_DIR="$HOME/.cache/gltest-direct"
           mkdir -p "$CACHE_DIR"
 
-          # Download the linux-amd64 build
-          LINUX_URL="https://github.com/genlayerlabs/genvm/releases/download/${GENVM_VERSION}/genvm-linux-amd64.tar.xz"
-          echo "Downloading $LINUX_URL"
-          curl -fsSL -o "$CACHE_DIR/genvm-universal-${GENVM_VERSION}.tar.xz" "$LINUX_URL"
-          echo "Cached as genvm-universal-${GENVM_VERSION}.tar.xz"
+          TARBALL="$CACHE_DIR/genvm-universal-${GENVM_VERSION}.tar.xz"
+          URL="https://github.com/genlayerlabs/genvm/releases/download/${GENVM_VERSION}/genvm-linux-amd64.tar.xz"
+          echo "Downloading $URL -> $TARBALL"
+          curl -fsSL -o "$TARBALL" "$URL"
+          echo "Done — $(du -sh $TARBALL)"
 
       - name: Run tests
         run: python -m pytest tests/test_p2p_escrow.py -v --tb=short
