@@ -4,17 +4,6 @@ from datetime import datetime, timezone
 import json
 import typing
 
-# ── Native GEN transfer (same pattern as Edge-Predict) ────────────────────────
-# Every Intelligent Contract has a ghost contract on the EVM layer holding its
-# GEN balance. gl.evm.contract_interface gives a typed proxy whose emit_transfer
-# queues an outbound native transfer to any address or EOA.
-@gl.evm.contract_interface
-class _Recipient:
-    class View:
-        pass
-    class Write:
-        pass
-
 PAYMENT_WINDOW   = 3600        # 1 h  — buyer must mark_paid
 RELEASE_WINDOW   = 1800        # 30 min — seller must release after proof
 OFFER_EXPIRY     = 24 * 3600   # 24 h — offer auto-expires if no buyer locks
@@ -87,8 +76,8 @@ class P2PEscrow(gl.Contract):
         self.trades[trade_id] = json.dumps(data)
 
     def _send(self, to: Address, amount: u256) -> None:
-        """Send native GEN via ghost contract emit_transfer (Edge-Predict pattern)."""
-        _Recipient(to).emit_transfer(value=amount)
+        """Send native GEN — gl.transfer works in both direct mode and on-chain."""
+        gl.transfer(to, amount)
 
     def _release(self, trade_id: u256, trade: dict) -> None:
         self._send(Address(trade["buyer"]), u256(int(trade["crypto_amount"])))
@@ -194,7 +183,10 @@ class P2PEscrow(gl.Contract):
             page = gl.nondet.web.render(
                 "https://www.coingecko.com/en/coins/genlayer"
             )[:2000]
-            return json.loads(gl.nondet.exec_prompt(prompt + "\n\nPage:\n" + page))
+            result = gl.nondet.exec_prompt(prompt + "\n\nPage:\n" + page)
+            if isinstance(result, str):
+                result = json.loads(result)
+            return result
 
         def validator_fn(lr) -> bool:
             if not isinstance(lr, gl.vm.Return):
@@ -372,7 +364,10 @@ class P2PEscrow(gl.Contract):
                 },
                 "proof_content": proof,
             }, ensure_ascii=False)
-            return json.loads(gl.nondet.exec_prompt(prompt + "\n\nInput:\n" + payload))
+            result = gl.nondet.exec_prompt(prompt + "\n\nInput:\n" + payload)
+            if isinstance(result, str):
+                result = json.loads(result)
+            return result
 
         def validator_fn(lr) -> bool:
             if not isinstance(lr, gl.vm.Return):
