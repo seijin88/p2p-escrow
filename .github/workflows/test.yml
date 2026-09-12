@@ -24,10 +24,10 @@ jobs:
         run: pip install -r requirements-test.txt
 
       - name: Pre-cache GenVM binary
-        # genlayer-test looks for ~/.cache/gltest-direct/genvm-universal-<ver>.tar.xz
-        # but the release only ships genvm-linux-amd64.tar.xz (no universal build).
-        # We download the linux-amd64 tarball and place it under the expected name
-        # so the SDK loader finds it in cache and skips the failing download.
+        # genlayer-test expects ~/.cache/gltest-direct/genvm-universal-<ver>.tar.xz
+        # containing runners/py-genlayer/*.tar entries.
+        # The release ships genvm-runners-all.tar.xz which has exactly that structure,
+        # so we download it and place it under the expected filename.
         run: |
           GENVM_VERSION=$(python - <<'EOF'
           import urllib.request, json
@@ -44,10 +44,23 @@ jobs:
           mkdir -p "$CACHE_DIR"
 
           TARBALL="$CACHE_DIR/genvm-universal-${GENVM_VERSION}.tar.xz"
-          URL="https://github.com/genlayerlabs/genvm/releases/download/${GENVM_VERSION}/genvm-linux-amd64.tar.xz"
-          echo "Downloading $URL -> $TARBALL"
+          URL="https://github.com/genlayerlabs/genvm/releases/download/${GENVM_VERSION}/genvm-runners-all.tar.xz"
+          echo "Downloading $URL"
           curl -fsSL -o "$TARBALL" "$URL"
-          echo "Done — $(du -sh $TARBALL)"
+          echo "Cached: $(du -sh $TARBALL)"
+
+          # Verify the expected structure is present
+          python - <<'PYEOF'
+          import tarfile, sys, pathlib, os
+          p = pathlib.Path(os.path.expanduser("~/.cache/gltest-direct"))
+          tarballs = list(p.glob("genvm-universal-*.tar.xz"))
+          assert tarballs, "No tarball found"
+          with tarfile.open(tarballs[0], "r:xz") as tf:
+              runners = [m.name for m in tf.getmembers()
+                         if m.name.startswith("runners/py-genlayer/") and m.name.endswith(".tar")]
+          print(f"Found {len(runners)} py-genlayer runner(s) in tarball ✓")
+          assert runners, "No py-genlayer runners found!"
+          PYEOF
 
       - name: Run tests
         run: python -m pytest tests/test_p2p_escrow.py -v --tb=short
