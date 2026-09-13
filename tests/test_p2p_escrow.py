@@ -492,6 +492,31 @@ def test_registered_traders_can_complete_full_trade(
     assert_payout(transfers, direct_bob)
 
 
+def test_contract_time_follows_the_transaction_message(
+    direct_vm, direct_deploy, direct_alice
+):
+    """Windows must run off the message datetime, not the local clock.
+
+    gltest patches `datetime.now()` to follow `warp()`, so a wall-clock contract
+    cannot be told apart that way. Bumping ONLY the message datetime does
+    distinguish them: a contract reading `gl.message_raw['datetime']` follows it,
+    one reading `datetime.now()` would still see the old warped value and revert
+    with "Offer not yet expired" — which is exactly the divergence validators
+    would hit with real clocks.
+    """
+    escrow = direct_deploy(CONTRACT_PATH)   # deploy first: it puts the SDK on sys.path
+    import genlayer.gl as gl
+
+    oid = post_offer(direct_vm, escrow, direct_alice)
+    o = escrow.get_offer(oid)
+    assert o["expires_at"] - o["created_at"] == 24 * 3600   # OFFER_EXPIRY
+
+    gl.message_raw["datetime"] = "2030-01-01T00:00:00Z"     # past the expiry
+    direct_vm.sender = direct_alice
+    escrow.expire_offer(oid)
+    assert escrow.get_offer(oid)["status"] == "expired"
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # FIX 3 — TOKEN & RATE RULES MATCH SETTLEMENT
 # ══════════════════════════════════════════════════════════════════════════════

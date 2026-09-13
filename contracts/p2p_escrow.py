@@ -1,6 +1,6 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 import typing
 
@@ -96,7 +96,19 @@ class P2PEscrow(gl.Contract):
     # ── Helpers ────────────────────────────────────────────────────────────
 
     def _now(self) -> int:
-        return int(datetime.now(timezone.utc).timestamp())
+        """Transaction time in unix seconds, taken from the message.
+
+        `gl.message_raw['datetime']` is the transaction datetime the VM delivers
+        to every validator, so time windows compare consistently and the
+        timestamps written to storage are identical across validators. Reading
+        `datetime.now()` here instead would use each validator's own wall clock:
+        `created_at`/`expires_at`/`payment_deadline` would differ per validator
+        and the transaction could not reach consensus. Direct-mode tests hide
+        that, because gltest patches `datetime.datetime.now` to follow
+        `vm.warp()`.
+        """
+        raw = str(gl.message_raw["datetime"]).replace("Z", "+00:00")
+        return int(datetime.fromisoformat(raw).timestamp())
 
     def _load_offer(self, offer_id: u256) -> dict:
         try:
@@ -441,7 +453,14 @@ class P2PEscrow(gl.Contract):
                 },
                 "proof_content": proof,
             }, ensure_ascii=False)
-            result = gl.nondet.exec_prompt(prompt + "\n\nInput:\n" + payload)
+            # response_format="json" is the SDK's JSON mode, so the reply comes
+            # back as a dict instead of a string we have to parse ourselves.
+            try:
+                result = gl.nondet.exec_prompt(
+                    prompt + "\n\nInput:\n" + payload, response_format="json"
+                )
+            except Exception:
+                result = None
             if isinstance(result, str):
                 try:
                     result = json.loads(result)
