@@ -143,7 +143,6 @@ def vm_instrumentation(monkeypatch):
     def install():
         import genlayer.gl as gl
 
-        _patch_warp_to_move_message_time()
         if getattr(gl.get_contract_at, "_hermes_instrumented", False):
             return
 
@@ -154,33 +153,6 @@ def vm_instrumentation(monkeypatch):
         monkeypatch.setattr(gl, "get_contract_at", fake_get_contract_at)
 
     return SimpleNamespace(transfers=ledger, install=install)
-
-
-def _patch_warp_to_move_message_time():
-    """Make `direct_vm.warp()` move the message datetime too.
-
-    Production delivers the transaction datetime inside the message, and the
-    contract reads it from `gl.message_raw['datetime']`. gltest's `warp()` only
-    fakes `datetime.datetime.now()`: it leaves `message_raw['datetime']` at the
-    value injected when the contract was loaded, so window tests would silently
-    test nothing unless warp updates both.
-    """
-    from gltest.direct.vm import VMContext
-
-    if getattr(VMContext.warp, "_hermes_patched", False):
-        return
-
-    original_warp = VMContext.warp
-
-    def warp(self, timestamp):
-        original_warp(self, timestamp)
-        gl = sys.modules.get("genlayer.gl")
-        raw = getattr(gl, "message_raw", None) if gl is not None else None
-        if raw is not None:
-            raw["datetime"] = self._datetime
-
-    warp._hermes_patched = True
-    VMContext.warp = warp
 
 
 @pytest.fixture

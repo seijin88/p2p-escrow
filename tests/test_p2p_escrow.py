@@ -21,6 +21,7 @@ PROOF_URL     = "https://example.com/proof.png"
 
 
 import json
+from datetime import datetime, timezone
 
 from conftest import address_bytes, address_hex
 
@@ -575,26 +576,29 @@ def test_reported_traders_can_complete_full_trade(
     assert_payout(transfers, direct_bob)
 
 
-def test_contract_time_follows_the_transaction_message(
+def test_timestamps_come_from_the_transaction_clock(
     direct_vm, direct_deploy, direct_alice
 ):
-    """Windows must run off the message datetime, not the local clock.
+    """Deadlines derive from the transaction time, not from another clock.
 
-    gltest patches `datetime.now()` to follow `warp()`, so a wall-clock contract
-    cannot be told apart that way. Bumping ONLY the message datetime does
-    distinguish them: a contract reading `gl.message_raw['datetime']` follows it,
-    one reading `datetime.now()` would still see the old warped value and revert
-    with "Offer not yet expired" — which is exactly the divergence validators
-    would hit with real clocks.
+    GenVM wires the stdlib clock to the transaction timestamp, so time is
+    identical for every validator (docs: Transaction Context → Time and
+    Timestamps). gltest mirrors that by pointing `datetime.now()` at the value
+    `warp()` sets, which is what this asserts — a contract reading some other
+    clock would miss the warped value.
     """
-    escrow = direct_deploy(CONTRACT_PATH)   # deploy first: it puts the SDK on sys.path
-    import genlayer.gl as gl
+    escrow = direct_deploy(CONTRACT_PATH)
 
+    direct_vm.warp("2030-05-05T05:05:05Z")
     oid = post_offer(direct_vm, escrow, direct_alice)
-    o = escrow.get_offer(oid)
-    assert o["expires_at"] - o["created_at"] == 24 * 3600   # OFFER_EXPIRY
 
-    gl.message_raw["datetime"] = "2030-01-01T00:00:00Z"     # past the expiry
+    expected = int(datetime(2030, 5, 5, 5, 5, 5, tzinfo=timezone.utc).timestamp())
+    o = escrow.get_offer(oid)
+    assert o["created_at"] == expected
+    assert o["expires_at"] == expected + 24 * 3600   # OFFER_EXPIRY
+
+    # windows move with the transaction clock, and only with it
+    direct_vm.warp("2030-05-06T05:05:06Z")
     direct_vm.sender = direct_alice
     escrow.expire_offer(oid)
     assert escrow.get_offer(oid)["status"] == "expired"

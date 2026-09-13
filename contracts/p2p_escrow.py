@@ -1,6 +1,6 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import typing
 
@@ -154,19 +154,15 @@ class P2PEscrow(gl.Contract):
     # ── Helpers ────────────────────────────────────────────────────────────
 
     def _now(self) -> int:
-        """Transaction time in unix seconds, taken from the message.
+        """Transaction time in unix seconds.
 
-        `gl.message_raw['datetime']` is the transaction datetime the VM delivers
-        to every validator, so time windows compare consistently and the
-        timestamps written to storage are identical across validators. Reading
-        `datetime.now()` here instead would use each validator's own wall clock:
-        `created_at`/`expires_at`/`payment_deadline` would differ per validator
-        and the transaction could not reach consensus. Direct-mode tests hide
-        that, because gltest patches `datetime.datetime.now` to follow
-        `vm.warp()`.
+        GenVM wires the standard library clock to the transaction timestamp, so
+        `datetime.now()` is deterministic: every validator re-executing the
+        transaction sees the same value, and expired-window arithmetic stays
+        equivalent (docs: "Transaction Context → Time and Timestamps", which
+        lists this form for arithmetic, expiries and deltas).
         """
-        raw = str(gl.message_raw["datetime"]).replace("Z", "+00:00")
-        return int(datetime.fromisoformat(raw).timestamp())
+        return int(datetime.now(timezone.utc).timestamp())
 
     def _load_offer(self, offer_id: u256) -> dict:
         try:
