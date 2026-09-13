@@ -10,6 +10,10 @@ OFFER_EXPIRY     = 24 * 3600   # 24 h — offer auto-expires if no buyer locks
 MAX_RATE_DEV_PCT = 10          # maximum allowed deviation from market rate
 SUPPORTED_TOKENS = ["GEN"]     # only native GEN is settled; USDT has no transfer mechanism
 SUPPORTED_FIAT   = ["IDR", "USD"]  # fiats the market oracle can price GEN in
+BANK_NAME_MIN    = 2
+ACCOUNT_NO_MIN   = 4
+ACCOUNT_NAME_MIN = 2
+PROFILE_FIELD_MAX = 128        # keeps a reported profile bounded
 # Rate is expressed as `<fiat> per 1 <token>`. The oracle must be asked for the
 # SAME currency, otherwise the ±10% guard compares unlike units.
 PRICE_URL        = (
@@ -41,7 +45,8 @@ class P2PEscrow(gl.Contract):
     trade_counter        : u256
     buyer_active_trades  : TreeMap[str, u256]
     seller_active_trades : TreeMap[str, u256]
-    user_profile_contract: Address
+    profiles             : TreeMap[str, str]   # bank profile reported by each trader
+    user_profile_contract: Address             # informational only, see Admin
     owner                : Address
 
     def __init__(self) -> None:
@@ -50,10 +55,93 @@ class P2PEscrow(gl.Contract):
         self.user_profile_contract = Address(ZERO_ADDR)
         self.owner                 = gl.message.sender_address
 
+    # ── Trader profiles ────────────────────────────────────────────────────
+    #
+    # The escrow keeps its own profile registry. Registration is validated
+    # HERE, inside the trading contract, and the trading path never calls
+    # another contract — so "must report a profile" cannot be bypassed by a
+    # misconfigured or unreachable registry, and there is no second source of
+    # truth that can diverge.
+
+    @gl.public.write
+    def report_profile(
+        self,
+        bank_name      : str,
+        account_number : str,
+        account_name   : str,
+    ) -> None:
+        """Report (or update) the caller's bank profile. Mandatory before trading.
+
+        A trader can only ever write their own entry: the key is the caller's
+        address, not a parameter.
+        """
+        bank_name      = bank_name.strip()
+        account_number = account_number.strip()
+        account_name   = account_name.strip()
+
+        _require(len(bank_name) >= BANK_NAME_MIN, "Bank name required")
+        _require(len(account_number) >= ACCOUNT_NO_MIN, "Account number required")
+        _require(len(account_name) >= ACCOUNT_NAME_MIN, "Account name required")
+        _require(
+            len(bank_name) <= PROFILE_FIELD_MAX
+            and len(account_number) <= PROFILE_FIELD_MAX
+            and len(account_name) <= PROFILE_FIELD_MAX,
+            "Profile field too long",
+        )
+
+        self.profiles[self._addr_key(gl.message.sender_address)] = json.dumps({
+            "address"        : str(gl.message.sender_address),
+            "bank_name"      : bank_name,
+            "account_number" : account_number,
+            "account_name"   : account_name,
+            "reported_at"    : self._now(),
+        })
+
+    @gl.public.view
+    def get_profile(self, address: str) -> typing.Any:
+        """Reported profile for `address`, or None when it has not reported."""
+        return self._load_profile(address) or None
+
+    @gl.public.view
+    def is_profile_reported(self, address: str) -> bool:
+        return bool(self._load_profile(address))
+
+    def _addr_key(self, addr: typing.Any) -> str:
+        """Canonical storage key for an address (lowercase 0x-hex).
+
+        Callers reach this with `Address` (the message sender) or with the hex
+        string calldata delivers, so both must land on the same key.
+        """
+        if isinstance(addr, (bytes, bytearray)):
+            return "0x" + bytes(addr).hex()
+        return str(addr).lower()
+
+    def _load_profile(self, addr: typing.Any) -> dict:
+        try:
+            return json.loads(self.profiles[self._addr_key(addr)])
+        except Exception:
+            return {}
+
+    def _require_profile(self, addr: Address) -> dict:
+        """Require a reported profile for `addr`, or revert.
+
+        This is the enforced gate: `post_offer` and `lock_order` both go through
+        it, so an address that has never reported a profile cannot trade.
+        """
+        profile = self._load_profile(addr)
+        _require(bool(profile), "Profile report required: call report_profile first")
+        return profile
+
     # ── Admin ──────────────────────────────────────────────────────────────
 
     @gl.public.write
     def set_user_profile_contract(self, addr: str) -> None:
+        """Record the address of a UserProfile contract, for frontends to read.
+
+        Owner-only, and deliberately informational: trading is gated by the
+        profiles reported above, never by this pointer, so pointing it at a
+        wrong or hostile address cannot let anyone trade.
+        """
         _require(gl.message.sender_address == self.owner, "Only owner")
         # calldata delivers a hex string; Address() also accepts a pre-built
         # Address, so callers may pass either.
@@ -62,36 +150,6 @@ class P2PEscrow(gl.Contract):
     @gl.public.view
     def get_user_profile_contract(self) -> str:
         return str(self.user_profile_contract)
-
-    def _profile_set(self) -> bool:
-        return str(self.user_profile_contract) != ZERO_ADDR
-
-    def _profile_view(self, method: str, *args: typing.Any) -> typing.Any:
-        """Call a view method on the configured UserProfile contract.
-
-        Uses the current SDK API (`gl.get_contract_at(addr).view().method()`);
-        the older `gl.call(...)` form does not exist in py-genlayer 0.3.x and
-        made the whole profile gate crash with AttributeError.
-        """
-        proxy = gl.get_contract_at(self.user_profile_contract).view()
-        return getattr(proxy, method)(*args)
-
-    def _require_profile(self, addr: Address) -> dict:
-        """Require `addr` to be a registered trader in the UserProfile contract.
-
-        The gate is mandatory: every offer and every lock is refused until the
-        owner wires the profile contract with set_user_profile_contract. When
-        the address is not registered the transaction reverts.
-        """
-        _require(self._profile_set(), "Profile contract not configured")
-        addr_hex = str(addr)
-        _require(
-            bool(self._profile_view("is_registered", addr_hex)),
-            "Trader not registered in profile contract",
-        )
-        profile = self._profile_view("get_profile", addr_hex)
-        _require(profile is not None, "Trader profile not found")
-        return profile
 
     # ── Helpers ────────────────────────────────────────────────────────────
 

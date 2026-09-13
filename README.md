@@ -45,7 +45,8 @@ arbitrate()                  AI fetches proof, decides: release or refund
 ### Key features
 
 - **Rate guard** — at lock time the contract fetches the live GEN price from CoinGecko's simple-price API **in the offer's own fiat currency** and rejects quotes more than ±10% away. It is a numeric check the validators can compare field by field, not an LLM judgement: the rate is `<fiat> per 1 GEN`, so an IDR offer is priced in IDR and a USD offer in USD
-- **Registered traders only** — the owner wires a `UserProfile` contract with `set_user_profile_contract`; until then, and for any address not registered in it, `post_offer` and `lock_order` revert
+- **Trader profiles live on the escrow** — `report_profile(bank, account_number, account_name)` writes the caller's own entry, and `post_offer` / `lock_order` refuse any address that has not reported. The gate is validated inside the escrow and the trading path reads no other contract, so it cannot be bypassed or broken by a registry that is misconfigured, unreachable, or pointing somewhere hostile
+- **Profile administration is owner-only and purely informational** — `set_user_profile_contract` records a `UserProfile` address for frontends to read; it never decides who may trade, so repointing it cannot let anyone in
 - **AI proof verification** — the AI reads the actual payment screenshot URL and answers on five axes: transaction ID, exact amount, currency, recipient, and payment method. All five must pass or crypto refunds to the seller, and the arbitration validator compares every one of them (plus the verdict) between leader and validators
 - **Offer expiry** — offers auto-expire after 24h if no buyer locks
 - **Timeouts** — buyer has 1h to pay, seller has 30min to release after proof is submitted
@@ -75,17 +76,23 @@ settlement test asserts the recipient and the amount that moves.
 1. Deploy p2p_escrow.py in GenLayer Studio
    → no constructor arguments needed
    → note the contract address
-2. Deploy contracts/user_profile.py
-3. As the escrow owner, call:
-   set_user_profile_contract("<user_profile address>")
-   → trading stays disabled until this is done
-4. Traders register on the profile contract:
-   register(bank_name, account_number, account_name)
+2. Each trader reports their bank profile on the escrow:
+   report_profile(bank_name, account_number, account_name)
+   → offers and locks are refused until the caller has reported
 ```
 
-The escrow itself has no compile-time dependency on the profile contract — it is
-wired by the owner after deploy, and the profile contract address is the only
-thing the owner can change (owner-only, enforced).
+That is the whole setup: no owner step is required before trading, and no second
+contract has to be deployed. The AI arbiter's recipient verification reads the
+bank details the escrow snapshotted into the trade at `post_offer` / `lock_order`,
+so a later `report_profile` cannot change an in-flight trade.
+
+Optionally, the owner can point the escrow at a `UserProfile` contract
+(`contracts/user_profile.py`) with `set_user_profile_contract("<address>")` for
+frontends to display. It is a reference only, not a gate.
+
+The escrow has no dependency on that pointer at all: nothing in the trading path
+reads another contract, so the only thing an owner can change is a display
+reference — and it cannot be used to let anyone in.
 
 ---
 
@@ -107,8 +114,13 @@ npm run dev
 ### .env
 
 ```env
-VITE_P2P_ESCROW_ADDRESS=0x...    # your deployed P2PEscrow address
+VITE_P2P_ESCROW_ADDRESS=0x...              # your deployed P2PEscrow address
+VITE_USER_PROFILE_ADDRESS=0x...            # optional, display only
 ```
+
+Traders report their bank profile straight to the escrow (`report_profile`);
+the frontend reads it back with `is_profile_reported` / `get_profile` on the
+same address.
 
 ### Pages / Tabs
 
@@ -124,7 +136,7 @@ VITE_P2P_ESCROW_ADDRESS=0x...    # your deployed P2PEscrow address
 
 ## Tests
 
-48 passing — every settlement path, the rate guard, the profile gate, and the
+52 passing — every settlement path, the rate guard, the profile gate, and the
 validators are covered.
 
 ```bash
@@ -132,21 +144,26 @@ pip install genlayer-test pytest --pre
 python -m pytest tests/test_p2p_escrow.py -v
 ```
 
-`tests/conftest.py` supplies two doubles, because gltest direct mode has no
-cross-contract calls and no WASI host to move funds:
+`tests/conftest.py` carries two pieces of infrastructure, because gltest direct
+mode has no WASI host to move funds:
 
-- a `UserProfile` double behind the same `gl.get_contract_at(addr).view()…`
-  call path the escrow uses, so registration and the unregistered-revert paths
-  are exercised rather than skipped
-- a transfer ledger that records `emit_transfer(value=…)` payouts, so
-  settlement tests assert who was paid and how much
+- a transfer ledger that records the contract's real `emit_transfer(value=…)`
+  calls, so settlement tests assert who was paid and how much — the balance
+  checks this replaced had been dropped as untestable
+- profile reports issued at deploy time for the fixture accounts (override the
+  `reported_traders` fixture to control who may trade), which is exactly how a
+  trader reports in production, so the enforcement tests exercise the real path
+  rather than a mock
+
+The profile gate needs no cross-contract stub: it is validated inside the
+escrow.
 
 ---
 
 ## Planned upgrades
 
 - [ ] ERC-20 / USDT support — needs an actual ERC-20 transfer path before it can be offered; the contract currently rejects anything but GEN rather than advertising a token it cannot settle
-- [ ] Trader reputation scoring on top of the `UserProfile` registry (the registry itself ships: bank account details, used by the arbiter for recipient verification)
+- [ ] Trader reputation scoring on top of the reported profiles (bank details already ship and are used by the arbiter for recipient verification)
 - [ ] Appeal layer for high-value disputes
 - [ ] Offer board with multiple simultaneous offers
 

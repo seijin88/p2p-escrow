@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useWallet } from '../WalletContext.jsx'
-import { registerProfile, isRegistered, getProfile } from '../profileClient.js'
+import { reportProfile } from '../profileClient.js'
 import { waitForTransaction } from '../p2pClient.js'
 
 const BANKS = ['BCA', 'BNI', 'BRI', 'Mandiri', 'CIMB', 'Danamon', 'Permata', 'GoPay', 'OVO', 'Dana', 'ShopeePay']
@@ -19,8 +19,8 @@ export default function RegisterForm({ onRegistered }) {
     if (!walletClient || !address) return setError('Connect wallet first')
     setError(''); setStatus(''); setLoading(true)
     try {
-      setStatus('Registering your bank account on-chain…')
-      const hash = await registerProfile(walletClient, {
+      setStatus('Reporting your bank account to the escrow…')
+      const hash = await reportProfile(walletClient, {
         bankName      : form.bankName,
         accountNumber : form.accountNumber,
         accountName   : form.accountName,
@@ -31,7 +31,7 @@ export default function RegisterForm({ onRegistered }) {
       } catch {
         // Transaction may already be accepted even if polling timed out
       }
-      setStatus('✅ Profile registered!')
+      setStatus('✅ Profile reported!')
       setTimeout(() => onRegistered?.({
         bank_name: form.bankName,
         account_number: form.accountNumber,
@@ -50,10 +50,10 @@ export default function RegisterForm({ onRegistered }) {
         <div className="register-header">
           <span className="register-icon">🏦</span>
           <div>
-            <h2 className="register-title">Register Bank Account</h2>
+            <h2 className="register-title">Report Bank Account</h2>
             <p className="register-desc">
-              Required before trading. Your bank details are stored on-chain and used
-              by the AI arbiter to verify payment proofs.
+              Required before trading. Your bank details are reported to the escrow
+              contract itself and used by the AI arbiter to verify payment proofs.
             </p>
           </div>
         </div>
@@ -61,9 +61,9 @@ export default function RegisterForm({ onRegistered }) {
         <div className="tips-box">
           <strong>🔒 Why is this required?</strong>
           <ul>
+            <li>The escrow refuses any offer or lock from an address with no reported profile</li>
             <li>Sellers: buyers see your account number automatically — no manual sharing</li>
-            <li>Buyers: your identity is verified for dispute resolution</li>
-            <li>AI arbiter uses your registered name to match payment receipts</li>
+            <li>AI arbiter uses your reported name to match payment receipts</li>
           </ul>
         </div>
 
@@ -108,7 +108,7 @@ export default function RegisterForm({ onRegistered }) {
           </div>
 
           <button className="btn btn-primary w-full" type="submit" disabled={loading || !address}>
-            {loading ? '⟳ Registering…' : '✅ Register & Continue'}
+            {loading ? '⟳ Reporting…' : '✅ Report & Continue'}
           </button>
         </form>
 

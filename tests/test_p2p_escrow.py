@@ -22,9 +22,7 @@ PROOF_URL     = "https://example.com/proof.png"
 
 import json
 
-import pytest
-
-from conftest import address_hex
+from conftest import address_bytes, address_hex
 
 
 # ── Address helper ─────────────────────────────────────────────────────────────
@@ -415,75 +413,160 @@ def test_set_profile_contract_owner_succeeds(direct_vm, direct_deploy, direct_al
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX 2 — ENFORCE REGISTERED PROFILES
+# FIX 2 — ENFORCE REPORTED PROFILES (inside the escrow)
 #
-# The escrow refuses to trade until the owner wires a profile contract, and then
-# refuses any address that is not registered in it. conftest's `direct_deploy`
-# wires the UserProfile double the way an owner would on-chain
-# (`set_user_profile_contract`); the `profile` fixture registers/unregisters.
+# The escrow keeps its own registry: `report_profile` writes the caller's bank
+# details, and every trading entry point requires them. The trading path reads no
+# other contract at all, so the gate cannot be bypassed through a misconfigured
+# registry and there is no second source of truth to diverge from. conftest
+# reports profiles for the standard traders at deploy time; `dave` below stands
+# for an address that never reported.
 # ══════════════════════════════════════════════════════════════════════════════
 
-@pytest.mark.unwired_profile
-def test_trading_blocked_until_profile_contract_configured(
-    direct_vm, direct_deploy, direct_alice
-):
-    """A fresh escrow has no profile contract, so it must refuse offers."""
-    escrow = direct_deploy(CONTRACT_PATH)
-    assert escrow.get_user_profile_contract().lower() == "0x" + "0" * 40
+DAVE = address_hex("dave")
 
-    direct_vm.sender = direct_alice
+
+def test_unreported_address_cannot_open_offer(direct_vm, direct_deploy, direct_alice):
+    """An address that never reported a profile cannot post an offer."""
+    escrow = direct_deploy(CONTRACT_PATH)
+    assert escrow.is_profile_reported(DAVE) is False
+    assert escrow.get_profile(DAVE) is None
+
+    direct_vm.sender = address_bytes("dave")
     direct_vm.value  = CRYPTO_AMOUNT
-    with direct_vm.expect_revert("Profile contract not configured"):
+    with direct_vm.expect_revert("Profile report required"):
         escrow.post_offer("GEN", "IDR", FIAT_AMOUNT, RATE, "BCA, GoPay")
     direct_vm.value = 0
 
 
-def test_post_offer_blocked_for_unregistered_seller(
-    direct_vm, direct_deploy, direct_alice, profile
+def test_unreported_buyer_cannot_lock_order(
+    direct_vm, direct_deploy, direct_alice, direct_bob
 ):
-    """post_offer must revert when the seller is not registered."""
+    """The gate covers locking too, not only posting."""
     escrow = direct_deploy(CONTRACT_PATH)
-    profile.unregister(address_hex("alice"))
+    oid = post_offer(direct_vm, escrow, direct_alice)      # alice has reported
 
-    direct_vm.sender = direct_alice
-    direct_vm.value  = CRYPTO_AMOUNT
-    with direct_vm.expect_revert("Trader not registered in profile contract"):
-        escrow.post_offer("GEN", "IDR", FIAT_AMOUNT, RATE, "BCA, GoPay")
-    direct_vm.value = 0
-
-
-def test_lock_order_blocked_for_unregistered_buyer(
-    direct_vm, direct_deploy, direct_alice, direct_bob, profile
-):
-    """lock_order must revert when the buyer is not registered."""
-    escrow = direct_deploy(CONTRACT_PATH)
-    oid = post_offer(direct_vm, escrow, direct_alice)   # seller is registered
-
-    profile.unregister(address_hex("bob"))
-    direct_vm.sender = direct_bob
+    direct_vm.sender = address_bytes("dave")
     mock_rate(direct_vm)
-    with direct_vm.expect_revert("Trader not registered in profile contract"):
+    with direct_vm.expect_revert("Profile report required"):
         escrow.lock_order(oid)
 
 
-def test_registered_traders_can_complete_full_trade(
-    direct_vm, direct_deploy, direct_alice, direct_bob, profile, transfers
+def test_profile_report_is_written_for_the_caller_only(
+    direct_vm, direct_deploy, direct_alice
 ):
-    """Both registered traders can go through the full trade lifecycle."""
-    profile.register(address_hex("alice"), bank="BCA",  number="1234567890",  name="Alice Seller")
-    profile.register(address_hex("bob"),   bank="GoPay", number="081234567890", name="Bob Buyer")
-
+    """report_profile keys on the caller, so nobody can report for someone else."""
     escrow = direct_deploy(CONTRACT_PATH)
+
+    direct_vm.sender = direct_alice
+    escrow.report_profile("BCA", "1234567890", "Alice Seller")
+
+    alice = escrow.get_profile(address_hex("alice"))
+    assert alice["account_name"] == "Alice Seller"
+    assert alice["address"].lower() == address_hex("alice")
+    # alice's call created exactly one entry, and dave still has none
+    assert escrow.is_profile_reported(DAVE) is False
+
+
+def test_report_profile_rejects_incomplete_details(direct_vm, direct_deploy, direct_alice):
+    """Bank details must be filled in; junk profiles are not storable."""
+    escrow = direct_deploy(CONTRACT_PATH)
+    direct_vm.sender = direct_alice
+
+    for bank, number, name, expected in (
+        ("",         "12345678", "Alice", "Bank name required"),
+        ("BCA",      "",         "Alice", "Account number required"),
+        ("BCA",      "12345678", "",      "Account name required"),
+        ("BCA",      "123",      "Alice", "Account number required"),
+        ("B" * 200,  "12345678", "Alice", "Profile field too long"),
+    ):
+        with direct_vm.expect_revert(expected):
+            escrow.report_profile(bank, number, name)
+
+
+def test_trade_keeps_the_profile_snapshot_the_buyer_committed_to(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """The details a trade settles against are the ones posted, not the newest ones.
+
+    The window that matters is between `post_offer` and `lock_order`: if the
+    seller switches bank account there, the trade must still carry the details
+    the buyer saw when committing — otherwise the arbiter would verify a proof
+    against an account the buyer never agreed to.
+    """
+    escrow = direct_deploy(CONTRACT_PATH)
+
+    direct_vm.sender = direct_alice
+    escrow.report_profile("BCA", "11111111", "Alice First")
+    oid = post_offer(direct_vm, escrow, direct_alice)
+    assert escrow.get_offer(oid)["account_name"] == "Alice First"
+
+    # alice switches bank account BEFORE the buyer locks
+    direct_vm.sender = direct_alice
+    escrow.report_profile("GoPay", "22222222", "Alice Second")
+    assert escrow.get_profile(address_hex("alice"))["bank_name"] == "GoPay"
+
+    # the trade keeps what the offer carried when it was posted
+    tid = lock_order(direct_vm, escrow, direct_bob, oid)
+    assert escrow.get_trade(tid)["seller_account_name"] == "Alice First"
+    assert escrow.get_trade(tid)["seller_bank_name"]    == "BCA"
+
+    # and after settlement the snapshot is unchanged
+    mark_paid(direct_vm, escrow, direct_bob, tid)
+    direct_vm.sender = direct_alice
+    escrow.release_crypto(tid)
+    assert escrow.get_trade(tid)["seller_account_name"] == "Alice First"
+
+    # a new offer, meanwhile, carries the new details
+    oid2 = post_offer(direct_vm, escrow, direct_alice)
+    assert escrow.get_offer(oid2)["account_name"] == "Alice Second"
+    assert escrow.get_offer(oid2)["bank_name"]    == "GoPay"
+
+
+def test_profile_contract_pointer_does_not_gate_trading(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """The admin pointer is informational — a bogus address cannot affect trading.
+
+    The owner points it at an address that is not a profile contract at all.
+    Trading still works off the locally reported profiles, and the escrow makes
+    no cross-contract read: conftest's proxy raises if one is ever attempted.
+    """
+    direct_vm.sender = direct_alice          # alice deploys = alice is owner
+    escrow = direct_deploy(CONTRACT_PATH)
+
+    bogus = "0x" + "deadbeef" * 5
+    direct_vm.sender = direct_alice
+    escrow.set_user_profile_contract(bogus)
+    assert escrow.get_user_profile_contract().lower() == bogus
+
+    oid = post_offer(direct_vm, escrow, direct_alice)
+    tid = lock_order(direct_vm, escrow, direct_bob, oid)
+    assert escrow.get_trade(tid)["status"] == "active"
+
+
+def test_reported_traders_can_complete_full_trade(
+    direct_vm, direct_deploy, direct_alice, direct_bob, transfers
+):
+    """Traders who reported run the whole lifecycle, and the trade carries their details."""
+    escrow = direct_deploy(CONTRACT_PATH)
+
+    direct_vm.sender = direct_alice
+    escrow.report_profile("BCA",   "1234567890",   "Alice Seller")
+    direct_vm.sender = direct_bob
+    escrow.report_profile("GoPay", "081234567890", "Bob Buyer")
+
     oid = post_offer(direct_vm, escrow, direct_alice)
     tid = lock_order(direct_vm, escrow, direct_bob, oid)
 
     t = escrow.get_trade(tid)
     assert t["status"] == "active"
-    # Bank details carried onto the trade come from the registered profiles
-    assert t["seller_account_name"] == "Alice Seller"
-    assert t["seller_bank_name"]    == "BCA"
-    assert t["buyer_account_name"]  == "Bob Buyer"
-    assert t["buyer_bank_name"]     == "GoPay"
+    # Bank details on the trade come from the reports made on this escrow
+    assert t["seller_account_name"]   == "Alice Seller"
+    assert t["seller_bank_name"]      == "BCA"
+    assert t["seller_account_number"] == "1234567890"
+    assert t["buyer_account_name"]    == "Bob Buyer"
+    assert t["buyer_bank_name"]       == "GoPay"
 
     mark_paid(direct_vm, escrow, direct_bob, tid)
     direct_vm.sender = direct_alice

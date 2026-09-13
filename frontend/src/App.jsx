@@ -6,7 +6,7 @@ import PostOfferForm from './components/PostOfferForm.jsx'
 import TradeDetail from './components/TradeDetail.jsx'
 import TradeHistory from './components/TradeHistory.jsx'
 import RegisterForm from './components/RegisterForm.jsx'
-import { isRegistered, getProfile } from './profileClient.js'
+import { isProfileReported, getProfile } from './profileClient.js'
 
 const PROFILE_KEY = 'p2p_escrow_profile'
 
@@ -33,12 +33,10 @@ export default function App() {
 
   const checkProfile = useCallback(async () => {
     if (!address) { setProfileChecked(true); return }
-    const addr = import.meta.env.VITE_USER_PROFILE_ADDRESS
-    if (!addr || addr === '0x0000000000000000000000000000000000000000') {
-      setHasProfile(true); setProfileChecked(true); return
-    }
+    // Profiles live on the escrow, so this is the same check the contract makes
+    // before it lets anyone post or lock.
     try {
-      const ok = await isRegistered(address)
+      const ok = await isProfileReported(address)
       if (ok) {
         const p = await getProfile(address)
         if (p && p.account_name) saveProfile(p)

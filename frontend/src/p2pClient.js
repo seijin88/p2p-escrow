@@ -1,4 +1,4 @@
-import { createClient, createPublicClient } from 'genlayer-js'
+import { createClient } from 'genlayer-js'
 import { testnetBradbury } from 'genlayer-js/chains'
 
 export const P2P_ESCROW_ADDRESS =
