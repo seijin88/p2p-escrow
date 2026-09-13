@@ -2,8 +2,11 @@ import React, { useState } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import { postOffer, waitForTransaction } from '../p2pClient.js'
 
-const TOKENS = ['GEN', 'USDT']
-const FIATS  = ['IDR', 'USD', 'MYR', 'SGD', 'PHP', 'THB', 'VND']
+// Must mirror the contract's rule lists — the escrow only settles native GEN
+// (SUPPORTED_TOKENS) and only prices offers in fiats the oracle can quote
+// (SUPPORTED_FIAT). Anything else reverts on post_offer.
+const TOKENS = ['GEN']
+const FIATS  = ['IDR', 'USD']
 
 export default function PostOfferForm({ onSuccess, onClose }) {
   const { walletClient, address } = useWallet()
@@ -95,7 +98,7 @@ export default function PostOfferForm({ onSuccess, onClose }) {
             <input className="input" type="number" min="1"
               placeholder="e.g. 14500" value={form.rate}
               onChange={e => set('rate', e.target.value)} required />
-            <span className="hint">AI fetches live market rate at buyer lock — must be within ±10%</span>
+            <span className="hint">Live GEN price is fetched when the buyer locks — must be within ±10% of market</span>
           </div>
 
           <div className="form-group">
