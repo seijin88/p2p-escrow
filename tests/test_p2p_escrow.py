@@ -469,10 +469,13 @@ def test_registered_traders_can_complete_full_trade(
 
 def test_only_gen_token_is_accepted(direct_vm, direct_deploy, direct_alice):
     """Only GEN is in SUPPORTED_TOKENS; any other string must be rejected."""
+    # Deployed once: gltest direct mode allows only one deployment of a given
+    # contract class per test. The guard runs before any state is touched, so
+    # reusing the instance across the loop is equivalent.
+    contract = direct_deploy(CONTRACT_PATH)
+    direct_vm.sender = direct_alice
     for bad_token in ["USDT", "ETH", "BTC", "USDC"]:
-        contract = direct_deploy(CONTRACT_PATH)
-        direct_vm.sender = direct_alice
-        direct_vm.value  = CRYPTO_AMOUNT
+        direct_vm.value = CRYPTO_AMOUNT
         with direct_vm.expect_revert("Unsupported token"):
             contract.post_offer(bad_token, "IDR", FIAT_AMOUNT, RATE, "BCA")
         direct_vm.value = 0

@@ -12,6 +12,20 @@ SUPPORTED_TOKENS = ["GEN"]     # only native GEN is settled; USDT has no transfe
 ZERO_ADDR        = "0x0000000000000000000000000000000000000000"
 
 
+def _require(cond: bool, msg: str) -> None:
+    """Revert the transaction with a user-facing message when `cond` is false.
+
+    Must be used instead of a bare `assert`. The GenVM runner only converts
+    `gl.vm.UserError` into a clean rollback that carries the message
+    (_genlayer_runner._give_result -> gl_call.rollback); any other exception,
+    AssertionError included, escapes as an unhandled VM error. gltest's
+    `expect_revert` additionally re-raises AssertionError, so `assert`-based
+    guards cannot be asserted at all in direct mode.
+    """
+    if not cond:
+        raise gl.vm.UserError(msg)
+
+
 class P2PEscrow(gl.Contract):
     offers               : TreeMap[u256, str]
     trades               : TreeMap[u256, str]
@@ -31,9 +45,11 @@ class P2PEscrow(gl.Contract):
     # ── Admin ──────────────────────────────────────────────────────────────
 
     @gl.public.write
-    def set_user_profile_contract(self, addr: Address) -> None:
-        assert gl.message.sender_address == self.owner, "Only owner"
-        self.user_profile_contract = addr
+    def set_user_profile_contract(self, addr: str) -> None:
+        _require(gl.message.sender_address == self.owner, "Only owner")
+        # calldata delivers a hex string; Address() also accepts a pre-built
+        # Address, so callers may pass either.
+        self.user_profile_contract = addr if isinstance(addr, Address) else Address(addr)
 
     @gl.public.view
     def get_user_profile_contract(self) -> str:
@@ -47,9 +63,9 @@ class P2PEscrow(gl.Contract):
         if not self._profile_set():
             return {}
         is_reg = gl.call(self.user_profile_contract, "is_registered", str(addr))
-        assert is_reg, "Trader not registered in profile contract"
+        _require(is_reg, "Trader not registered in profile contract")
         profile = gl.call(self.user_profile_contract, "get_profile", str(addr))
-        assert profile is not None, "Trader profile not found"
+        _require(profile is not None, "Trader profile not found")
         return profile
 
     # ── Helpers ────────────────────────────────────────────────────────────
@@ -106,12 +122,12 @@ class P2PEscrow(gl.Contract):
         rate            : u256,
         payment_methods : str,
     ) -> u256:
-        assert token in SUPPORTED_TOKENS, "Unsupported token"
-        assert gl.message.value > u256(0), "Must lock crypto"
-        assert fiat_amount > u256(0), "Fiat amount must be > 0"
-        assert rate > u256(0), "Rate must be > 0"
-        assert len(fiat_currency) >= 2, "Invalid fiat currency"
-        assert len(payment_methods) >= 3, "Specify payment method"
+        _require(token in SUPPORTED_TOKENS, "Unsupported token")
+        _require(gl.message.value > u256(0), "Must lock crypto")
+        _require(fiat_amount > u256(0), "Fiat amount must be > 0")
+        _require(rate > u256(0), "Rate must be > 0")
+        _require(len(fiat_currency) >= 2, "Invalid fiat currency")
+        _require(len(payment_methods) >= 3, "Specify payment method")
 
         # Require seller profile — embed bank info into offer for buyer visibility
         seller_profile = self._require_profile(gl.message.sender_address)
@@ -139,9 +155,9 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def cancel_offer(self, offer_id: u256) -> None:
         o = self._load_offer(offer_id)
-        assert o, "Offer not found"
-        assert o["status"] == "open", "Not open"
-        assert o["seller"] == str(gl.message.sender_address), "Only seller"
+        _require(o, "Offer not found")
+        _require(o["status"] == "open", "Not open")
+        _require(o["seller"] == str(gl.message.sender_address), "Only seller")
         o["status"] = "cancelled"
         self._save_offer(offer_id, o)
         self._send(gl.message.sender_address, u256(int(o["crypto_amount"])))
@@ -150,9 +166,9 @@ class P2PEscrow(gl.Contract):
     def expire_offer(self, offer_id: u256) -> None:
         """Anyone can call after expiry — returns crypto to seller."""
         o = self._load_offer(offer_id)
-        assert o, "Offer not found"
-        assert o["status"] == "open", "Not open"
-        assert self._now() > o.get("expires_at", 0), "Offer not yet expired"
+        _require(o, "Offer not found")
+        _require(o["status"] == "open", "Not open")
+        _require(self._now() > o.get("expires_at", 0), "Offer not yet expired")
         o["status"] = "expired"
         self._save_offer(offer_id, o)
         self._send(Address(o["seller"]), u256(int(o["crypto_amount"])))
@@ -162,10 +178,10 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def lock_order(self, offer_id: u256) -> u256:
         o = self._load_offer(offer_id)
-        assert o, "Offer not found"
-        assert o["status"] == "open", "Not available"
-        assert o["seller"] != str(gl.message.sender_address), "Seller cannot buy"
-        assert self._now() <= o.get("expires_at", 99999999999), "Offer has expired"
+        _require(o, "Offer not found")
+        _require(o["status"] == "open", "Not available")
+        _require(o["seller"] != str(gl.message.sender_address), "Seller cannot buy")
+        _require(self._now() <= o.get("expires_at", 99999999999), "Offer has expired")
 
         # Require buyer profile
         buyer_profile = self._require_profile(gl.message.sender_address)
@@ -200,7 +216,7 @@ class P2PEscrow(gl.Contract):
                 return False
 
         r = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
-        assert bool(r.get("within_limit", False)), "Rate rejected"
+        _require(bool(r.get("within_limit", False)), "Rate rejected")
 
         now   = self._now()
         self.trade_counter = self.trade_counter + u256(1)
@@ -250,12 +266,12 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def mark_paid(self, trade_id: u256, proof_url: str) -> None:
         t = self._load_trade(trade_id)
-        assert t, "Trade not found"
-        assert t["buyer"] == str(gl.message.sender_address), "Only buyer"
-        assert not t["proof_locked"], "Proof already submitted"
-        assert t["status"] == "active", "Not active"
-        assert proof_url.startswith("http"), "Invalid URL"
-        assert self._now() <= t["payment_deadline"], "Payment window expired"
+        _require(t, "Trade not found")
+        _require(t["buyer"] == str(gl.message.sender_address), "Only buyer")
+        _require(not t["proof_locked"], "Proof already submitted")
+        _require(t["status"] == "active", "Not active")
+        _require(proof_url.startswith("http"), "Invalid URL")
+        _require(self._now() <= t["payment_deadline"], "Payment window expired")
         t["proof_url"]        = proof_url
         t["proof_locked"]     = True
         t["release_deadline"] = self._now() + RELEASE_WINDOW
@@ -265,9 +281,9 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def release_crypto(self, trade_id: u256) -> None:
         t = self._load_trade(trade_id)
-        assert t, "Trade not found"
-        assert t["status"] == "paid", "Not paid"
-        assert t["seller"] == str(gl.message.sender_address), "Only seller"
+        _require(t, "Trade not found")
+        _require(t["status"] == "paid", "Not paid")
+        _require(t["seller"] == str(gl.message.sender_address), "Only seller")
         t["verdict"]        = "release"
         t["verdict_reason"] = "Seller confirmed receipt."
         self._release(trade_id, t)
@@ -275,9 +291,9 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def open_dispute(self, trade_id: u256) -> None:
         t = self._load_trade(trade_id)
-        assert t, "Trade not found"
-        assert t["status"] == "paid", "Not paid"
-        assert t["seller"] == str(gl.message.sender_address), "Only seller"
+        _require(t, "Trade not found")
+        _require(t["status"] == "paid", "Not paid")
+        _require(t["seller"] == str(gl.message.sender_address), "Only seller")
         t["was_disputed"] = True
         t["status"]       = "disputed"
         self._save_trade(trade_id, t)
@@ -285,10 +301,10 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def escalate_after_seller_timeout(self, trade_id: u256) -> None:
         t = self._load_trade(trade_id)
-        assert t, "Trade not found"
-        assert t["status"] == "paid", "Not paid"
-        assert t["buyer"] == str(gl.message.sender_address), "Only buyer"
-        assert self._now() > t["release_deadline"], "Release window open"
+        _require(t, "Trade not found")
+        _require(t["status"] == "paid", "Not paid")
+        _require(t["buyer"] == str(gl.message.sender_address), "Only buyer")
+        _require(self._now() > t["release_deadline"], "Release window open")
         t["was_disputed"] = True
         t["status"]       = "disputed"
         self._save_trade(trade_id, t)
@@ -296,10 +312,10 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def cancel_expired_order(self, trade_id: u256) -> None:
         t = self._load_trade(trade_id)
-        assert t, "Trade not found"
-        assert t["status"] == "active", "Not active"
-        assert t["seller"] == str(gl.message.sender_address), "Only seller"
-        assert self._now() > t["payment_deadline"], "Payment window open"
+        _require(t, "Trade not found")
+        _require(t["status"] == "active", "Not active")
+        _require(t["seller"] == str(gl.message.sender_address), "Only seller")
+        _require(self._now() > t["payment_deadline"], "Payment window open")
         t["verdict"]        = "refund"
         t["verdict_reason"] = "Buyer did not pay within window."
         self._refund(trade_id, t)
@@ -307,9 +323,9 @@ class P2PEscrow(gl.Contract):
     @gl.public.write
     def arbitrate(self, trade_id: u256) -> None:
         t = self._load_trade(trade_id)
-        assert t, "Trade not found"
-        assert t["status"] == "disputed", "Not disputed"
-        assert t["proof_locked"], "No proof submitted"
+        _require(t, "Trade not found")
+        _require(t["status"] == "disputed", "Not disputed")
+        _require(t["proof_locked"], "No proof submitted")
 
         fiat_amt  = int(t["fiat_amount"])
         fiat_cur  = t["fiat_currency"]
