@@ -1,11 +1,35 @@
 import { createClient } from 'genlayer-js'
 import { testnetBradbury } from 'genlayer-js/chains'
 
-export const P2P_ESCROW_ADDRESS =
-  import.meta.env.VITE_P2P_ESCROW_ADDRESS || '0x06731B7F34dc8D24300f8884760F3ca0eB1F64e6'
+const HEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/
 
+/**
+ * Read a contract address from the build-time env, or refuse to start.
+ *
+ * Deliberately NOT falling back to a hardcoded address: a stale default points
+ * the app at an old contract silently — it looks like an empty board rather
+ * than a misconfiguration, and it hides which address users are signing
+ * against. Configure it in frontend/.env (see .env.example).
+ */
+function requireAddress(name) {
+  const raw = import.meta.env[name]
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  if (!HEX_ADDRESS.test(value)) {
+    throw new Error(
+      `${name} is ${raw === undefined ? 'not set' : `malformed ("${raw}")`}. ` +
+      `Expected 0x followed by 40 hex characters. ` +
+      `Copy frontend/.env.example to frontend/.env and set the deployed contract address.`
+    )
+  }
+  return value
+}
+
+export const P2P_ESCROW_ADDRESS = requireAddress('VITE_P2P_ESCROW_ADDRESS')
+
+// Optional and display-only: trading is gated by the bank profiles reported
+// inside the escrow itself, never by this pointer.
 export const USER_PROFILE_ADDRESS =
-  import.meta.env.VITE_USER_PROFILE_ADDRESS || '0x311E1DFbe166E32B76c2666fA7D394dF6B62c143'
+  import.meta.env.VITE_USER_PROFILE_ADDRESS || '0x0000000000000000000000000000000000000000'
 
 // ── Public read-only client (no wallet needed) ────────────────────────────────
 export const publicClient = createClient({ chain: testnetBradbury })

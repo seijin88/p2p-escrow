@@ -94,6 +94,22 @@ The escrow has no dependency on that pointer at all: nothing in the trading path
 reads another contract, so the only thing an owner can change is a display
 reference — and it cannot be used to let anyone in.
 
+### Deployed addresses
+
+Every deployment is recorded in `deployments/<network>.json` — address,
+transaction hash, block, timestamp and the commit the source came from. That
+file is committed deliberately, so the address can be checked against the chain
+instead of trusted from a website:
+
+```bash
+cat deployments/bradbury.json
+```
+
+Before signing anything, confirm the address your wallet is pointed at matches
+the record. The frontend prints the same address in its footer for the same
+reason: for an escrow, the real risk is not that the address is visible, it is
+that a user is quietly pointed at some other contract.
+
 ---
 
 ## Frontend
@@ -117,6 +133,13 @@ npm run dev
 VITE_P2P_ESCROW_ADDRESS=0x...              # your deployed P2PEscrow address
 VITE_USER_PROFILE_ADDRESS=0x...            # optional, display only
 ```
+
+`VITE_P2P_ESCROW_ADDRESS` is required and format-checked when the app loads: if
+it is missing, or is not `0x` followed by 40 hex characters, the app fails
+immediately with a clear error naming the variable. There is deliberately **no
+hardcoded fallback** — a stale default would send the app to an old contract
+while looking like an empty board, and it would hide which address users are
+actually signing against.
 
 Traders report their bank profile straight to the escrow (`report_profile`);
 the frontend reads it back with `is_profile_reported` / `get_profile` on the

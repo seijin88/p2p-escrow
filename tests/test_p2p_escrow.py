@@ -76,15 +76,16 @@ def open_dispute(vm, contract, seller, trade_id):
     vm.sender = seller
     contract.open_dispute(trade_id)
 
-def mock_arb(vm, verdict):
-    """Mock all five arbitration axes consistently with the verdict."""
+def mock_arb(vm, verdict, tx_ref="TXN123"):
+    """Mock all six arbitration axes consistently with the verdict."""
     vm.mock_web("example.com/proof.png", {"status": 200, "body": "Transfer Rp15000 TXN123"})
     ok = str(verdict == "release").lower()
     vm.mock_llm(
         "AI arbiter",
-        f'{{"verdict":"{verdict}","tx_id_found":{ok},"amount_matches":{ok},'
-        f'"currency_matches":{ok},"recipient_matches":{ok},'
-        f'"payment_method_valid":{ok},"reason":"mocked {verdict}"}}'
+        f'{{"verdict":"{verdict}","tx_id":"{tx_ref}","tx_id_found":{ok},'
+        f'"amount_matches":{ok},"currency_matches":{ok},"recipient_matches":{ok},'
+        f'"payment_method_valid":{ok},"date_in_window":{ok},'
+        f'"reason":"mocked {verdict}"}}'
     )
 
 def bal(vm, addr):
@@ -725,19 +726,22 @@ def _disputed_trade(direct_vm, contract, alice, bob):
     return tid
 
 
-def _arb_mock(vm, *, tx_id=True, amount=True, currency=True, recipient=True, method=True):
+def _arb_mock(vm, *, tx_id=True, amount=True, currency=True, recipient=True,
+              method=True, date=True, tx_ref="TXN123"):
     """Fine-grained mock: set each axis independently."""
-    all_ok  = tx_id and amount and currency and recipient and method
+    all_ok  = tx_id and amount and currency and recipient and method and date
     verdict = "release" if all_ok else "refund"
     vm.mock_web("example.com/proof.png", {"status": 200, "body": "Transfer Rp15000 TXN123"})
     vm.mock_llm(
         "AI arbiter",
         f'{{"verdict":"{verdict}",'
+        f'"tx_id":"{tx_ref}",'
         f'"tx_id_found":{str(tx_id).lower()},'
         f'"amount_matches":{str(amount).lower()},'
         f'"currency_matches":{str(currency).lower()},'
         f'"recipient_matches":{str(recipient).lower()},'
         f'"payment_method_valid":{str(method).lower()},'
+        f'"date_in_window":{str(date).lower()},'
         f'"reason":"axis test"}}'
     )
 
@@ -844,15 +848,23 @@ def test_arbitration_validator_compares_every_axis(
 
     agreeing = {
         "verdict": "release", "reason": "ok",
+        "tx_id": "TXN123",
         "tx_id_found": True, "amount_matches": True, "currency_matches": True,
         "recipient_matches": True, "payment_method_valid": True,
+        "date_in_window": True,
     }
     assert direct_vm.run_validator(leader_result=agreeing) is True
 
-    for axis in ("verdict", "tx_id_found", "amount_matches",
-                 "currency_matches", "recipient_matches", "payment_method_valid"):
+    for axis in ("verdict", "tx_id", "tx_id_found", "amount_matches",
+                 "currency_matches", "recipient_matches", "payment_method_valid",
+                 "date_in_window"):
         tampered = dict(agreeing)
-        tampered[axis] = "refund" if axis == "verdict" else False
+        if axis == "verdict":
+            tampered[axis] = "refund"
+        elif axis == "tx_id":
+            tampered[axis] = "TXN999"        # a different payment reference
+        else:
+            tampered[axis] = False
         assert direct_vm.run_validator(leader_result=tampered) is False, (
             f"arbitration validator ignored a differing '{axis}'"
         )
@@ -881,3 +893,98 @@ def test_rate_validator_compares_every_rate_field(
         assert direct_vm.run_validator(leader_result=tampered) is False, (
             f"rate validator ignored a differing '{field}'"
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# P0 — ONE PAYMENT REFERENCE SETTLES EXACTLY ONE TRADE (replay guard)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _second_disputed_trade(direct_vm, contract, alice, bob):
+    """A second, independent disputed trade on the same deployment."""
+    oid = post_offer(direct_vm, contract, alice)
+    tid = lock_order(direct_vm, contract, bob, oid)
+    mark_paid(direct_vm, contract, bob, tid)
+    open_dispute(direct_vm, contract, alice, tid)
+    return tid
+
+
+def test_payment_date_outside_window_forces_refund(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """An old or undated transfer must not release funds, even when 5 axes pass."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm, date=False)
+    contract.arbitrate(tid)
+
+    t = contract.get_trade(tid)
+    assert t["verdict"] == "refund"
+    assert "failed" in t["verdict_reason"].lower()
+    # Nothing was consumed: the proof failed, it was not a replay.
+    assert not contract.is_payment_reference_used("TXN123")
+
+
+def test_release_consumes_the_payment_reference(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """A released trade records its reference so it can never be reused."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    assert not contract.is_payment_reference_used("TXN123")
+
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+
+    t = contract.get_trade(tid)
+    assert t["verdict"] == "release"
+    assert t["payment_tx_id"] == "TXN123"
+    assert contract.is_payment_reference_used("TXN123")
+
+
+def test_one_payment_reference_cannot_settle_two_trades(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """Replaying one proof onto a second trade must refund, not release."""
+    contract = direct_deploy(CONTRACT_PATH)
+    first = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(first)
+    assert contract.get_trade(first)["verdict"] == "release"
+
+    second = _second_disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)              # same proof, same reference
+    contract.arbitrate(second)
+
+    t = contract.get_trade(second)
+    assert t["verdict"] == "refund", "replayed proof released funds"
+    assert "already used" in t["verdict_reason"].lower()
+
+
+def test_replay_guard_ignores_reference_formatting(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """'txn-123' must hit the same guard as 'TXN123' — no formatting loophole."""
+    contract = direct_deploy(CONTRACT_PATH)
+    first = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(first)
+
+    second = _second_disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm, tx_ref="txn-123")
+    contract.arbitrate(second)
+
+    assert contract.get_trade(second)["verdict"] == "refund"
+
+
+def test_release_without_a_reference_forces_refund(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """A release must consume a reference; an empty one fails closed."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm, tx_ref="")
+    contract.arbitrate(tid)
+
+    t = contract.get_trade(tid)
+    assert t["verdict"] == "refund"
+    assert "reference" in t["verdict_reason"].lower()

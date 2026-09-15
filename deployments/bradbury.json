@@ -1,0 +1,26 @@
+{
+  "network": "bradbury",
+  "chain_id": 4221,
+  "rpc": "https://rpc-bradbury.genlayer.com",
+  "explorer": "https://explorer-bradbury.genlayer.com",
+  "contracts": [
+    {
+      "name": "P2PEscrow",
+      "file": "contracts/p2p_escrow.py",
+      "address": "0x03b1ca07c8c83bab716ce3023079e4deba9f0164",
+      "transaction_hash": "0x080fe149088e07959d81d4a1bd159c962ff744f23157c4c01deecd223b7955f5",
+      "block_number": 21714458,
+      "block_timestamp": "2026-09-14T05:34:22Z",
+      "status": "success",
+      "deployer": "0x98c619d160cD45E83D4D72b71Af95DC755AcE436",
+      "source_commit": "e8a32afdee6f4d3952107466c7d832c5b4a09437",
+      "source_blob_sha": "b88bf7d60a715ae108e8145ef33d3cf1cde5f796",
+      "note": "Deployed from the revision at source_commit. The replay guard for payment references (used_tx_ids, the payment-date axis) landed after this deployment, so redeploy to make those active on this network."
+    }
+  ],
+  "how_to_verify": [
+    "eth_getTransactionByHash(<transaction_hash>) returns the deploy transaction; its logs carry the address above.",
+    "eth_getCode(<address>) returns a ~300-byte ghost contract, the same footprint as every other Intelligent Contract on this network.",
+    "Compare source_blob_sha with `git rev-parse <source_commit>:contracts/p2p_escrow.py`."
+  ]
+}

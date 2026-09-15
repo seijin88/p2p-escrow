@@ -7,6 +7,7 @@ import TradeDetail from './components/TradeDetail.jsx'
 import TradeHistory from './components/TradeHistory.jsx'
 import RegisterForm from './components/RegisterForm.jsx'
 import { isProfileReported, getProfile } from './profileClient.js'
+import { P2P_ESCROW_ADDRESS } from './p2pClient.js'
 
 const PROFILE_KEY = 'p2p_escrow_profile'
 
@@ -141,6 +142,10 @@ export default function App() {
 
       <footer className="app-footer">
         <p>P2P Escrow built on <a href="https://genlayer.com" target="_blank" rel="noreferrer">GenLayer</a></p>
+        <p className="app-footer-address" title={P2P_ESCROW_ADDRESS}>
+          Escrow contract: <code>{P2P_ESCROW_ADDRESS.slice(0, 10)}…{P2P_ESCROW_ADDRESS.slice(-8)}</code>
+          {' '}— verify this address before signing.
+        </p>
       </footer>
     </div>
   )
