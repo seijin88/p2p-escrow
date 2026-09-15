@@ -21,13 +21,18 @@
   "deploy_ceiling": {
     "kind": "empirical, undocumented",
     "largest_successful_calldata_bytes": 20132,
-    "observed_failures_bytes": [21892, 32452],
+    "smallest_failed_calldata_bytes": 21893,
+    "observed_failures_bytes": [21893, 21893, 21892, 32452],
     "rule_of_thumb": "Keep generated calldata below ~20,000 bytes. scripts/make_compact_build.py prints a warning when a build exceeds it.",
     "evidence": [
+      "12165 B succeeded at block 21969878 (unrelated account) — the ceiling is well above 12 KB",
       "20132 B (pre-P0 build) deployed successfully at block 21714458",
+      "21893 B failed twice, at blocks 21969691 and 21969741",
       "21892 B and 32452 B both failed with status 0x0 during the same period",
+      "18725 B (this contract's compact build) deployed successfully at block 21971524",
       "the identical 21223 B source deployed successfully on Studionet, so the code itself is not the problem"
-    ]
+    ],
+    "conclusion": "The boundary sits between 18,725 and 21,893 bytes of calldata; keep builds comfortably below 20 KB."
   },
   "history": [
     {
