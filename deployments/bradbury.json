@@ -3,24 +3,47 @@
   "chain_id": 4221,
   "rpc": "https://rpc-bradbury.genlayer.com",
   "explorer": "https://explorer-bradbury.genlayer.com",
-  "contracts": [
+  "current": {
+    "name": "P2PEscrow",
+    "address": "0x90706683CD68758a8b77d244421918F2FEBACE75",
+    "readable_source": "contracts/p2p_escrow.py",
+    "deployed_artifact": "contracts/p2p_escrow_deploy.py",
+    "artifact_sha256": "f3130f639a1c0c05e10364d5d8e3fbdb0a20acfec68def16bb5f2ef8e9af22f2",
+    "source_sha256": "ebe660c8f4901bcea5480615c65e2f0de7ac1e8e90e3b3fa7f7b2fa0011b59db",
+    "transaction_hash": "0x6153a5e21400932e7acdfca5a4709e3ece42f7b7be583bd4cd5dad650f61fdf5",
+    "block_number": 21971524,
+    "block_timestamp": "2026-09-15T19:47:56Z",
+    "calldata_bytes": 18725,
+    "status": "success",
+    "deployer": "0x98c619d160cD45E83D4D72b71Af95DC755AcE436",
+    "note": "Deployed from the generated compact build, because Bradbury rejects larger deploys (see deploy_ceiling). The public API and every stored field name are identical to the readable source; the build only strips docstrings and shortens internal identifiers. Regenerate with `py -3.12 scripts/make_compact_build.py` — it is byte-reproducible."
+  },
+  "deploy_ceiling": {
+    "kind": "empirical, undocumented",
+    "largest_successful_calldata_bytes": 20132,
+    "observed_failures_bytes": [21892, 32452],
+    "rule_of_thumb": "Keep generated calldata below ~20,000 bytes. scripts/make_compact_build.py prints a warning when a build exceeds it.",
+    "evidence": [
+      "20132 B (pre-P0 build) deployed successfully at block 21714458",
+      "21892 B and 32452 B both failed with status 0x0 during the same period",
+      "the identical 21223 B source deployed successfully on Studionet, so the code itself is not the problem"
+    ]
+  },
+  "history": [
     {
       "name": "P2PEscrow",
-      "file": "contracts/p2p_escrow.py",
       "address": "0x03b1ca07c8c83bab716ce3023079e4deba9f0164",
       "transaction_hash": "0x080fe149088e07959d81d4a1bd159c962ff744f23157c4c01deecd223b7955f5",
       "block_number": 21714458,
       "block_timestamp": "2026-09-14T05:34:22Z",
+      "calldata_bytes": 20132,
       "status": "success",
-      "deployer": "0x98c619d160cD45E83D4D72b71Af95DC755AcE436",
-      "source_commit": "e8a32afdee6f4d3952107466c7d832c5b4a09437",
-      "source_blob_sha": "b88bf7d60a715ae108e8145ef33d3cf1cde5f796",
-      "note": "Deployed from the revision at source_commit. The replay guard for payment references (used_tx_ids, the payment-date axis) landed after this deployment, so redeploy to make those active on this network."
+      "note": "Superseded. Deployed from the revision before the payment-reference replay guard landed."
     }
   ],
   "how_to_verify": [
     "eth_getTransactionByHash(<transaction_hash>) returns the deploy transaction; its logs carry the address above.",
-    "eth_getCode(<address>) returns a ~300-byte ghost contract, the same footprint as every other Intelligent Contract on this network.",
-    "Compare source_blob_sha with `git rev-parse <source_commit>:contracts/p2p_escrow.py`."
+    "eth_getCode(<address>) returns a ~300-byte ghost contract, the same footprint as every Intelligent Contract on this network.",
+    "sha256sum contracts/p2p_escrow_deploy.py must equal artifact_sha256; that exact file is what was sent as deploy calldata."
   ]
 }

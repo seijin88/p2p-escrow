@@ -72,13 +72,44 @@ settlement test asserts the recipient and the amount that moves.
 
 ## Deploy
 
+Two contract files exist, for two different jobs:
+
+| File | What it is |
+|---|---|
+| `contracts/p2p_escrow.py` | the readable source — reviewed, and what the test suite runs against |
+| `contracts/p2p_escrow_deploy.py` | generated, compact — **this is the file you deploy** |
+
+The generated build exists because Bradbury rejects large deploys: 20,132 bytes
+of calldata deployed successfully, while 21,892 and 32,452 bytes failed with
+`status 0x0` — and the same source deploys fine on Studionet, so the code is not
+the problem. The build only strips docstrings and shortens internal identifiers;
+the public API and every stored field name stay exactly as written. Regenerate
+and check the size before deploying:
+
+```bash
+py -3.12 scripts/make_compact_build.py   # warns when a build exceeds the ceiling
 ```
-1. Deploy p2p_escrow.py in GenLayer Studio
+
+Then, in GenLayer Studio on Bradbury:
+
+```
+1. Deploy contracts/p2p_escrow_deploy.py
    → no constructor arguments needed
+   → set the gas limit to 20,000,000 (a deploy of this size used ~14.7M)
    → note the contract address
 2. Each trader reports their bank profile on the escrow:
    report_profile(bank_name, account_number, account_name)
    → offers and locks are refused until the caller has reported
+```
+
+The generated file is verified equivalent to the readable source by running the
+suite against it:
+
+```bash
+cp contracts/p2p_escrow.py /tmp/p2p_escrow.readable.py
+cp contracts/p2p_escrow_deploy.py contracts/p2p_escrow.py
+pytest tests/test_p2p_escrow.py -q
+cp /tmp/p2p_escrow.readable.py contracts/p2p_escrow.py
 ```
 
 That is the whole setup: no owner step is required before trading, and no second
@@ -96,10 +127,13 @@ reference — and it cannot be used to let anyone in.
 
 ### Deployed addresses
 
-Every deployment is recorded in `deployments/<network>.json` — address,
-transaction hash, block, timestamp and the commit the source came from. That
-file is committed deliberately, so the address can be checked against the chain
-instead of trusted from a website:
+Live on Bradbury: **`0x90706683CD68758a8b77d244421918F2FEBACE75`**, deployed from
+`contracts/p2p_escrow_deploy.py` (sha256 `f3130f63…`).
+
+`deployments/bradbury.json` records the address, transaction hash, block,
+timestamp, artifact hash, and the size ceiling that shaped the build — committed
+on purpose, so the address can be checked against the chain instead of trusted
+from a website:
 
 ```bash
 cat deployments/bradbury.json
@@ -130,7 +164,7 @@ npm run dev
 ### .env
 
 ```env
-VITE_P2P_ESCROW_ADDRESS=0x...              # your deployed P2PEscrow address
+VITE_P2P_ESCROW_ADDRESS=0x90706683CD68758a8b77d244421918F2FEBACE75   # see deployments/bradbury.json
 VITE_USER_PROFILE_ADDRESS=0x...            # optional, display only
 ```
 
