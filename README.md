@@ -45,7 +45,7 @@ arbitrate()                  AI fetches proof, decides: release or refund
 ### Key features
 
 - **Rate guard** — at lock time the contract fetches the live GEN price from CoinGecko's simple-price API **in the offer's own fiat currency** and rejects quotes more than ±10% away. It is a numeric check the validators can compare field by field, not an LLM judgement: the rate is `<fiat> per 1 GEN`, so an IDR offer is priced in IDR and a USD offer in USD
-- **Trader profiles live on the escrow** — `report_profile(bank, account_number, account_name)` writes the caller's own entry, and `post_offer` / `lock_order` refuse any address that has not reported. The gate is validated inside the escrow and the trading path reads no other contract, so it cannot be bypassed or broken by a registry that is misconfigured, unreachable, or pointing somewhere hostile
+- **Trader profiles live on the escrow** — `report_profile(bank, account_number, account_name)` writes a **sha256 commitment** of those details; the plaintext bank data never touches the chain. The AI arbiter receives the LLM-extracted recipient fields and re-hashes them on-chain — only an exact match releases funds. This is **P1 (privacy)**: no one can read another trader's account number from a view call. The seller shares the plaintext off-chain (chat, QR, etc.) before payment.
 - **Profile administration is owner-only and purely informational** — `set_user_profile_contract` records a `UserProfile` address for frontends to read; it never decides who may trade, so repointing it cannot let anyone in
 - **AI proof verification** — the AI reads the actual payment screenshot URL and answers on five axes: transaction ID, exact amount, currency, recipient, and payment method. All five must pass or crypto refunds to the seller, and the arbitration validator compares every one of them (plus the verdict) between leader and validators
 - **Offer expiry** — offers auto-expire after 24h if no buyer locks
@@ -53,15 +53,17 @@ arbitrate()                  AI fetches proof, decides: release or refund
 - **Supported tokens** — GEN (native). Only GEN can be locked and paid out, so only GEN may be offered
 - **Supported fiats** — IDR, USD (the currencies the oracle can price GEN in)
 
-### Settlement paths (each covered by tests, payouts asserted)
+### Settlement paths (each covered by tests, payouts asserted after finalization)
 
 | Path | Trigger | Outcome |
 |---|---|---|
 | `cancel_offer` | Seller cancels before buyer | Crypto → seller |
 | `release_crypto` | Seller confirms payment | Crypto → buyer |
 | `cancel_expired_order` | Buyer never pays | Crypto → seller |
-| `arbitrate` (release) | AI confirms valid proof | Crypto → buyer |
-| `arbitrate` (refund) | AI rejects proof | Crypto → seller |
+| `arbitrate` (release) | AI confirms valid proof → `status = arbitrated` | Funds held during 24h appeal window |
+| `appeal_verdict` | Either party appeals within window | Trade re-enters `disputed`, full re-arbitration |
+| `finalize_trade` | Appeal window closed (or expired) | Crypto → buyer or seller per verdict |
+| `arbitrate` (refund) | AI rejects proof | Funds held → `finalize_trade` → Crypto → seller |
 | `expire_offer` | No buyer in 24h | Crypto → seller |
 
 Direct mode cannot execute native transfers, so `tests/conftest.py` installs a
@@ -193,8 +195,8 @@ same address.
 
 ## Tests
 
-52 passing — every settlement path, the rate guard, the profile gate, and the
-validators are covered.
+65 passing — every settlement path, the rate guard, the profile gate, the
+privacy commitment (P1), the appeal window (P2), and the validators are covered.
 
 ```bash
 pip install genlayer-test pytest --pre
@@ -219,9 +221,9 @@ escrow.
 
 ## Planned upgrades
 
+- [x] Appeal layer for high-value disputes — `appeal_verdict` (contract) + `appealTransaction` (GenLayer protocol-level)
 - [ ] ERC-20 / USDT support — needs an actual ERC-20 transfer path before it can be offered; the contract currently rejects anything but GEN rather than advertising a token it cannot settle
-- [ ] Trader reputation scoring on top of the reported profiles (bank details already ship and are used by the arbiter for recipient verification)
-- [ ] Appeal layer for high-value disputes
+- [ ] Trader reputation scoring on top of the reported profiles
 - [ ] Offer board with multiple simultaneous offers
 
 ---

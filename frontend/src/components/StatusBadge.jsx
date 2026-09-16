@@ -7,7 +7,9 @@ const STATUS_CONFIG = {
   paid:             { label: 'Fiat Paid',         cls: 'badge-purple', icon: '💸' },
   released:         { label: 'Released',          cls: 'badge-green',  icon: '✅' },
   disputed:         { label: 'Disputed',          cls: 'badge-red',    icon: '⚠️' },
+  arbitrated:       { label: 'AI Decided',         cls: 'badge-purple', icon: '⚖️' },
   settled:          { label: 'Settled',           cls: 'badge-green',  icon: '🏁' },
+  finalized:         { label: 'Finalized',          cls: 'badge-green',  icon: '🏁' },
 }
 
 export default function StatusBadge({ status }) {

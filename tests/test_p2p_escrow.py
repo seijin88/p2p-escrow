@@ -20,6 +20,7 @@ MARKET_PRICE  = 15000.0        # same as RATE → 0% deviation
 PROOF_URL     = "https://example.com/proof.png"
 
 
+import hashlib
 import json
 from datetime import datetime, timezone
 
@@ -77,15 +78,23 @@ def open_dispute(vm, contract, seller, trade_id):
     contract.open_dispute(trade_id)
 
 def mock_arb(vm, verdict, tx_ref="TXN123"):
-    """Mock all six arbitration axes consistently with the verdict."""
-    vm.mock_web("example.com/proof.png", {"status": 200, "body": "Transfer Rp15000 TXN123"})
+    """Mock all six arbitration axes consistently with the verdict.
+
+    The recipient fields must hash (bank|account|name) to the exact commitment
+    report_profile stores, so they are derived from the seller's mock profile
+    values (conftest reports alice/bob/charlie as "<seed> trader" / BCA /
+    1234567890) — the contract verifies the recipient on-chain by hashing, not
+    by trusting this verdict's flag.
+    """
     ok = str(verdict == "release").lower()
+    vm.mock_web("example.com/proof.png", {"status": 200, "body": "Transfer Rp15000 TXN123"})
     vm.mock_llm(
         "AI arbiter",
-        f'{{"verdict":"{verdict}","tx_id":"{tx_ref}","tx_id_found":{ok},'
-        f'"amount_matches":{ok},"currency_matches":{ok},"recipient_matches":{ok},'
-        f'"payment_method_valid":{ok},"date_in_window":{ok},'
-        f'"reason":"mocked {verdict}"}}'
+        f'{{"verdict":"{verdict}","tx_id":"{tx_ref}","recipient_name":"alice trader",'
+        f'"recipient_bank":"BCA","recipient_account":"1234567890",'
+        f'"tx_id_found":{ok},"amount_matches":{ok},'
+        f'"currency_matches":{ok},"recipient_matches":{ok},'
+        f'"payment_method_valid":{ok},"date_in_window":{ok},"reason":"mocked {verdict}"}}'
     )
 
 def bal(vm, addr):
@@ -299,6 +308,12 @@ def test_arbitrate_release_sends_to_buyer(direct_vm, direct_deploy, direct_alice
     mock_arb(direct_vm, "release")
     direct_vm.sender = direct_charlie
     contract.arbitrate(tid)
+    t = contract.get_trade(tid)
+    assert t["status"] == "arbitrated"          # provisional during appeal window
+    assert t["verdict"] == "release"
+    # P2: payout happens only after the appeal window closes
+    direct_vm.warp("2027-01-02T02:00:00")
+    contract.finalize_trade(tid)
     assert_settled(contract, tid, "release")
     assert_payout(transfers, direct_bob)
 
@@ -311,6 +326,9 @@ def test_arbitrate_refund_returns_to_seller(direct_vm, direct_deploy, direct_ali
     mock_arb(direct_vm, "refund")
     direct_vm.sender = direct_charlie
     contract.arbitrate(tid)
+    assert contract.get_trade(tid)["status"] == "arbitrated"
+    direct_vm.warp("2027-01-02T02:00:00")
+    contract.finalize_trade(tid)
     assert_settled(contract, tid, "refund")
     assert_payout(transfers, direct_alice)
 
@@ -457,15 +475,22 @@ def test_unreported_buyer_cannot_lock_order(
 def test_profile_report_is_written_for_the_caller_only(
     direct_vm, direct_deploy, direct_alice
 ):
-    """report_profile keys on the caller, so nobody can report for someone else."""
+    """report_profile keys on the caller, so nobody can report for someone else.
+
+    P1: on-chain storage keeps a sha256 commitment, not the plaintext — the
+    plaintext bank details are shared off-chain by the trader themself.
+    """
     escrow = direct_deploy(CONTRACT_PATH)
 
     direct_vm.sender = direct_alice
     escrow.report_profile("BCA", "1234567890", "Alice Seller")
 
     alice = escrow.get_profile(address_hex("alice"))
-    assert alice["account_name"] == "Alice Seller"
+    expected = hashlib.sha256("BCA|1234567890|Alice Seller".encode()).hexdigest()
+    assert alice["commitment"] == expected
     assert alice["address"].lower() == address_hex("alice")
+    # no plaintext PII is stored on-chain
+    assert "account_number" not in alice and "account_name" not in alice
     # alice's call created exactly one entry, and dave still has none
     assert escrow.is_profile_reported(DAVE) is False
 
@@ -489,40 +514,39 @@ def test_report_profile_rejects_incomplete_details(direct_vm, direct_deploy, dir
 def test_trade_keeps_the_profile_snapshot_the_buyer_committed_to(
     direct_vm, direct_deploy, direct_alice, direct_bob
 ):
-    """The details a trade settles against are the ones posted, not the newest ones.
+    """The commitment a trade settles against is the one posted, not the newest.
 
     The window that matters is between `post_offer` and `lock_order`: if the
-    seller switches bank account there, the trade must still carry the details
-    the buyer saw when committing — otherwise the arbiter would verify a proof
-    against an account the buyer never agreed to.
+    seller switches bank account there, the trade must still carry the
+    commitment the buyer saw when committing — otherwise the arbiter would
+    verify a proof against an account the buyer never agreed to.
     """
     escrow = direct_deploy(CONTRACT_PATH)
 
     direct_vm.sender = direct_alice
     escrow.report_profile("BCA", "11111111", "Alice First")
     oid = post_offer(direct_vm, escrow, direct_alice)
-    assert escrow.get_offer(oid)["account_name"] == "Alice First"
+    first_commitment = escrow.get_offer(oid)["bank_commitment"]
 
     # alice switches bank account BEFORE the buyer locks
     direct_vm.sender = direct_alice
     escrow.report_profile("GoPay", "22222222", "Alice Second")
-    assert escrow.get_profile(address_hex("alice"))["bank_name"] == "GoPay"
+    second_commitment = escrow.get_profile(address_hex("alice"))["commitment"]
+    assert second_commitment != first_commitment
 
-    # the trade keeps what the offer carried when it was posted
+    # the trade keeps the commitment the offer carried when it was posted
     tid = lock_order(direct_vm, escrow, direct_bob, oid)
-    assert escrow.get_trade(tid)["seller_account_name"] == "Alice First"
-    assert escrow.get_trade(tid)["seller_bank_name"]    == "BCA"
+    assert escrow.get_trade(tid)["seller_bank_commitment"] == first_commitment
 
     # and after settlement the snapshot is unchanged
     mark_paid(direct_vm, escrow, direct_bob, tid)
     direct_vm.sender = direct_alice
     escrow.release_crypto(tid)
-    assert escrow.get_trade(tid)["seller_account_name"] == "Alice First"
+    assert escrow.get_trade(tid)["seller_bank_commitment"] == first_commitment
 
-    # a new offer, meanwhile, carries the new details
+    # a new offer, meanwhile, carries the new commitment
     oid2 = post_offer(direct_vm, escrow, direct_alice)
-    assert escrow.get_offer(oid2)["account_name"] == "Alice Second"
-    assert escrow.get_offer(oid2)["bank_name"]    == "GoPay"
+    assert escrow.get_offer(oid2)["bank_commitment"] == second_commitment
 
 
 def test_profile_contract_pointer_does_not_gate_trading(
@@ -563,12 +587,14 @@ def test_reported_traders_can_complete_full_trade(
 
     t = escrow.get_trade(tid)
     assert t["status"] == "active"
-    # Bank details on the trade come from the reports made on this escrow
-    assert t["seller_account_name"]   == "Alice Seller"
-    assert t["seller_bank_name"]      == "BCA"
-    assert t["seller_account_number"] == "1234567890"
-    assert t["buyer_account_name"]    == "Bob Buyer"
-    assert t["buyer_bank_name"]       == "GoPay"
+    # P1: the trade carries commitments, not plaintext bank details
+    assert t["seller_bank_commitment"] == hashlib.sha256(
+        "BCA|1234567890|Alice Seller".encode()
+    ).hexdigest()
+    assert t["buyer_bank_commitment"] == hashlib.sha256(
+        "GoPay|081234567890|Bob Buyer".encode()
+    ).hexdigest()
+    assert "seller_account_number" not in t and "buyer_account_name" not in t
 
     mark_paid(direct_vm, escrow, direct_bob, tid)
     direct_vm.sender = direct_alice
@@ -728,7 +754,12 @@ def _disputed_trade(direct_vm, contract, alice, bob):
 
 def _arb_mock(vm, *, tx_id=True, amount=True, currency=True, recipient=True,
               method=True, date=True, tx_ref="TXN123"):
-    """Fine-grained mock: set each axis independently."""
+    """Fine-grained mock: set each axis independently.
+
+    `recipient=False` now means the extracted recipient fields do not match
+    the commitment — the contract decides this axis on-chain by hashing, so
+    the mock must lie in the *extracted fields*, not in a flag.
+    """
     all_ok  = tx_id and amount and currency and recipient and method and date
     verdict = "release" if all_ok else "refund"
     vm.mock_web("example.com/proof.png", {"status": 200, "body": "Transfer Rp15000 TXN123"})
@@ -736,6 +767,9 @@ def _arb_mock(vm, *, tx_id=True, amount=True, currency=True, recipient=True,
         "AI arbiter",
         f'{{"verdict":"{verdict}",'
         f'"tx_id":"{tx_ref}",'
+        f'"recipient_name":"alice trader",'
+        f'"recipient_bank":"BCA",'
+        f'"recipient_account":"{"1234567890" if recipient else "9999999999"}",'
         f'"tx_id_found":{str(tx_id).lower()},'
         f'"amount_matches":{str(amount).lower()},'
         f'"currency_matches":{str(currency).lower()},'
@@ -806,11 +840,15 @@ def test_arbitrate_currency_mismatch_forces_refund(
 def test_arbitrate_all_axes_pass_releases_to_buyer(
     direct_vm, direct_deploy, direct_alice, direct_bob
 ):
-    """All five axes passing must result in release to buyer."""
+    """All six axes passing must result in a provisional release verdict."""
     contract = direct_deploy(CONTRACT_PATH)
     tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
     _arb_mock(direct_vm)   # all axes True by default
     contract.arbitrate(tid)
+    t = contract.get_trade(tid)
+    assert t["status"] == "arbitrated" and t["verdict"] == "release"
+    direct_vm.warp("2027-01-02T02:00:00")
+    contract.finalize_trade(tid)
     assert_settled(contract, tid, "release")
 
 
@@ -827,6 +865,9 @@ def test_arbitration_fails_closed_on_unreadable_response(
     t = contract.get_trade(tid)
     assert t["verdict"] == "refund"
     assert "failed" in t["verdict_reason"].lower()
+    # P2: the refund executes only after the appeal window closes
+    direct_vm.warp("2027-01-02T02:00:00")
+    contract.finalize_trade(tid)
     assert_payout(transfers, direct_alice)
 
 
@@ -988,3 +1029,141 @@ def test_release_without_a_reference_forces_refund(
     t = contract.get_trade(tid)
     assert t["verdict"] == "refund"
     assert "reference" in t["verdict_reason"].lower()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# P2 — APPEAL WINDOW: verdicts are provisional, once-appealable, then finalised
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_arbitrate_does_not_payout_before_finalization(
+    direct_vm, direct_deploy, direct_alice, direct_bob, transfers
+):
+    """The verdict holds funds in escrow until the appeal window closes."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+    t = contract.get_trade(tid)
+    assert t["status"] == "arbitrated"
+    assert t["appeal_deadline"] > t["created_at"]
+    assert transfers.total(direct_bob) == 0, "paid out before the appeal window closed"
+
+
+def test_appeal_within_window_restores_disputed_status(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """A trade party can appeal during the window; the trade re-enters disputed."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+    assert contract.get_trade(tid)["status"] == "arbitrated"
+
+    direct_vm.sender = direct_bob           # the losing buyer appeals
+    contract.appeal_verdict(tid)
+    t = contract.get_trade(tid)
+    assert t["status"] == "disputed" and t["appealed"] is True
+
+
+def test_appeal_rearbitration_flips_the_verdict(
+    direct_vm, direct_deploy, direct_alice, direct_bob, transfers
+):
+    """After an appeal, a fresh arbitration re-decides the trade."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+    assert contract.get_trade(tid)["verdict"] == "release"
+
+    direct_vm.sender = direct_bob
+    contract.appeal_verdict(tid)
+    assert contract.get_trade(tid)["status"] == "disputed"
+
+    _arb_mock(direct_vm, recipient=False)   # second round finds a bad account
+    contract.arbitrate(tid)
+    assert contract.get_trade(tid)["verdict"] == "refund"
+
+    direct_vm.warp("2027-01-02T02:00:00")
+    contract.finalize_trade(tid)
+    assert_settled(contract, tid, "refund")
+    assert_payout(transfers, direct_alice)
+
+
+def test_appeal_only_once(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """The appeal right is one-shot: it cannot be restored by re-arbitrating."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+
+    direct_vm.sender = direct_bob
+    contract.appeal_verdict(tid)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)                 # re-arbitrated after the appeal
+
+    t = contract.get_trade(tid)
+    assert t["status"] == "arbitrated"
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("Appeal already used"):
+        contract.appeal_verdict(tid)
+
+
+def test_appeal_only_trade_parties(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+    """A bystander cannot burn someone else's one-shot appeal."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+
+    direct_vm.sender = direct_charlie
+    with direct_vm.expect_revert("Only trade parties"):
+        contract.appeal_verdict(tid)
+
+
+def test_appeal_after_window_closes_fails(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """No appeal after the 24h window."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+
+    direct_vm.warp("2027-01-02T02:00:00")
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("Appeal window closed"):
+        contract.appeal_verdict(tid)
+
+
+def test_finalize_pays_out_according_to_the_verdict(
+    direct_vm, direct_deploy, direct_alice, direct_bob, transfers
+):
+    """Finalizing a release pays the buyer; finalizing a refund pays the seller."""
+    contract = direct_deploy(CONTRACT_PATH)
+
+    release_tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(release_tid)
+    refund_tid = _second_disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm, tx_ref="TXN999")
+    contract.arbitrate(refund_tid)
+
+    direct_vm.warp("2027-01-02T02:00:00")
+    contract.finalize_trade(release_tid)
+    contract.finalize_trade(refund_tid)
+    assert transfers.total(direct_bob)  == CRYPTO_AMOUNT
+    assert transfers.total(direct_alice) == CRYPTO_AMOUNT
+
+
+def test_finalize_before_window_closes_fails(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """The verdict cannot be executed while the appeal window is open."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+    with direct_vm.expect_revert("Appeal window open"):
+        contract.finalize_trade(tid)
+    # a trade that never went through arbitration cannot be finalized:
+    # lock a fresh order — it is "active", not "arbitrated"
+    oid2 = post_offer(direct_vm, contract, direct_alice)
+    lock_order(direct_vm, contract, direct_bob, oid2)
+    with direct_vm.expect_revert("Not awaiting finalization"):
+        contract.finalize_trade(2)

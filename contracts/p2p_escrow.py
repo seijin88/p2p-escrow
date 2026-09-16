@@ -1,6 +1,7 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import typing
 
@@ -14,6 +15,8 @@ BANK_NAME_MIN    = 2
 ACCOUNT_NO_MIN   = 4
 ACCOUNT_NAME_MIN = 2
 PROFILE_FIELD_MAX = 128        # keeps a reported profile bounded
+PRIVACY_MODE     = "commitment"  # on-chain storage keeps hashes, never plaintext PII
+APPEAL_WINDOW    = 24 * 3600   # 24 h — window to appeal an arbitration verdict (P2)
 # Rate is expressed as `<fiat> per 1 <token>`. The oracle must be asked for the
 # SAME currency, otherwise the ±10% guard compares unlike units.
 PRICE_URL        = (
@@ -114,9 +117,10 @@ class P2PEscrow(gl.Contract):
 
         self.profiles[self._addr_key(gl.message.sender_address)] = json.dumps({
             "address"        : str(gl.message.sender_address),
-            "bank_name"      : bank_name,
-            "account_number" : account_number,
-            "account_name"   : account_name,
+            "commitment"     : hashlib.sha256(
+                "|".join([bank_name, account_number, account_name]).encode()
+            ).hexdigest(),
+            "bank_name_hint" : bank_name,
             "reported_at"    : self._now(),
         })
 
@@ -271,7 +275,8 @@ class P2PEscrow(gl.Contract):
         _require(rate > u256(0), "Rate must be > 0")
         _require(len(payment_methods) >= 3, "Specify payment method")
 
-        # Require seller profile — embed bank info into offer for buyer visibility
+        # Require seller profile — the offer carries only a commitment to the
+        # seller's bank details, never the plaintext (privacy: P1).
         seller_profile = self._require_profile(gl.message.sender_address)
 
         self.offer_counter = self.offer_counter + u256(1)
@@ -285,10 +290,9 @@ class P2PEscrow(gl.Contract):
             "fiat_amount"     : str(fiat_amount),
             "rate"            : str(rate),
             "payment_methods" : payment_methods,
-            "bank_name"       : seller_profile.get("bank_name", ""),
-            "account_number"  : seller_profile.get("account_number", ""),
-            "account_name"    : seller_profile.get("account_name", ""),
-            "status"          : "open",
+            # Commitment to the seller's bank details; plaintext lives off-chain
+            "bank_commitment"  : seller_profile.get("commitment", ""),
+            "status"           : "open",
             "created_at"      : self._now(),
             "expires_at"      : self._now() + OFFER_EXPIRY,
         })
@@ -401,14 +405,9 @@ class P2PEscrow(gl.Contract):
             "market_price_micro_at_lock": str(r.get("market_micro", 0)),
             "rate_deviation_pct"        : int(r.get("deviation_pct", 0)),
             "payment_methods"   : o["payment_methods"],
-            # Seller bank info (from offer, sourced from UserProfile)
-            "seller_bank_name"     : o.get("bank_name", ""),
-            "seller_account_number": o.get("account_number", ""),
-            "seller_account_name"  : o.get("account_name", ""),
-            # Buyer bank info (from UserProfile — for audit trail)
-            "buyer_bank_name"      : buyer_profile.get("bank_name", ""),
-            "buyer_account_number" : buyer_profile.get("account_number", ""),
-            "buyer_account_name"   : buyer_profile.get("account_name", ""),
+            # Bank commitments only — plaintext bank details live off-chain (P1)
+            "seller_bank_commitment": o.get("bank_commitment", ""),
+            "buyer_bank_commitment" : buyer_profile.get("commitment", ""),
             "proof_url"         : "",
             "proof_locked"      : False,
             "payment_deadline"  : now + PAYMENT_WINDOW,
@@ -437,6 +436,7 @@ class P2PEscrow(gl.Contract):
         _require(not t["proof_locked"], "Proof already submitted")
         _require(t["status"] == "active", "Not active")
         _require(proof_url.startswith("http"), "Invalid URL")
+        _require(t["created_at"] > 0 and t["payment_deadline"] > 0, "Trade window not set")
         _require(self._now() <= t["payment_deadline"], "Payment window expired")
         t["proof_url"]        = proof_url
         t["proof_locked"]     = True
@@ -500,10 +500,11 @@ class P2PEscrow(gl.Contract):
         token     = t["token"]
         buyer     = t["buyer"]
         proof_url = t["proof_url"]
-        # Use registered account name for stronger recipient verification
-        seller_account_name   = t.get("seller_account_name", seller)
-        seller_account_number = t.get("seller_account_number", "")
-        seller_bank_name      = t.get("seller_bank_name", "")
+        # P1 privacy: the contract never stored the plaintext bank details — only
+        # a sha256 commitment. The recipient axis is verified against that
+        # commitment: the LLM still reads the proof and the claimed recipient,
+        # but the contract decides by hashing the LLM-extracted fields.
+        seller_commitment = t.get("seller_bank_commitment", "")
 
         prompt = (
             "You are an impartial AI arbiter for a P2P crypto-to-fiat escrow dispute. "
@@ -513,8 +514,9 @@ class P2PEscrow(gl.Contract):
             "quote it verbatim in \"tx_id\". "
             "\n2. EXACT AMOUNT      — must show exactly {amt} {cur}. "
             "\n3. CURRENCY          — must be {cur}. "
-            "\n4. RECIPIENT         — proof must show recipient name '{acct_name}' "
-            "(bank: {bank}, account: {acct_no}). "
+            "\n4. RECIPIENT         — proof must show the seller's bank account; report "
+            "the recipient name in \"recipient_name\", the bank in \"recipient_bank\", "
+            "and the account number in \"recipient_account\" exactly as printed. "
             "\n5. PAYMENT METHOD    — transfer channel must be one of: {methods}. "
             "\n6. PAYMENT DATE      — the transfer must be dated on/after {opened} and "
             "on/before {deadline} (UTC); an older or undated transfer fails this axis. "
@@ -522,15 +524,15 @@ class P2PEscrow(gl.Contract):
             "\nRespond ONLY with valid JSON — no prose, no markdown: "
             '{{"verdict":"release|refund",'
             '"tx_id":"<reference or empty string>",'
+            '"recipient_name":"<name on the proof or empty>",'
+            '"recipient_bank":"<bank on the proof or empty>",'
+            '"recipient_account":"<account number on the proof or empty>",'
             '"tx_id_found":<bool>,"amount_matches":<bool>,"currency_matches":<bool>,'
             '"recipient_matches":<bool>,"payment_method_valid":<bool>,'
             '"date_in_window":<bool>,'
             '"reason":"<2-3 sentences>"}}'
         ).format(
             amt=fiat_amt, cur=fiat_cur,
-            acct_name=seller_account_name,
-            bank=seller_bank_name,
-            acct_no=seller_account_number,
             methods=methods,
             opened=_iso(t["created_at"]),
             deadline=_iso(t["payment_deadline"]),
@@ -549,9 +551,6 @@ class P2PEscrow(gl.Contract):
                     "fiat_amount"         : fiat_amt,
                     "payment_methods"     : methods,
                     "seller_address"      : seller,
-                    "seller_account_name" : seller_account_name,
-                    "seller_account_no"   : seller_account_number,
-                    "seller_bank"         : seller_bank_name,
                     "buyer_address"       : buyer,
                 },
                 "proof_content": proof,
@@ -610,6 +609,24 @@ class P2PEscrow(gl.Contract):
         tx_ref   = _normalise_tx_id(r.get("tx_id"))
         ref_used = self._tx_id_used(tx_ref)
 
+        # P1: the recipient axis is now decided on-chain by commitment, not by
+        # the LLM's opinion. The proof's printed recipient fields are hashed
+        # exactly like report_profile hashes them; only an exact match passes.
+        if seller_commitment:
+            # Field order MUST match report_profile: bank|account|name.
+            extracted = "|".join([
+                str(r.get("recipient_bank", "") or "").strip(),
+                str(r.get("recipient_account", "") or "").strip(),
+                str(r.get("recipient_name", "") or "").strip(),
+            ])
+            recipient_ok = hashlib.sha256(extracted.encode()).hexdigest() == seller_commitment
+        else:
+            # Older trades stored the claimed details directly; fall back to
+            # the LLM's own axis rather than failing every legacy dispute.
+            recipient_ok = bool(r.get("recipient_matches"))
+        if not recipient_ok:
+            r["recipient_matches"] = False
+
         # Override: every axis must pass independently — LLM verdict alone is not sufficient
         all_pass = (
             r.get("tx_id_found")
@@ -637,7 +654,52 @@ class P2PEscrow(gl.Contract):
         t["payment_tx_id"]  = tx_ref
         t["verdict"]        = verdict
         t["verdict_reason"] = reason
-        if verdict == "release":
+
+        # P2: the verdict is provisional during an appeal window. The trade
+        # holds its funds and can be appealed once (bonded) before either
+        # party can finalise the outcome. `finalize_trade` executes the payout
+        # after the window passes; `appeal_verdict` forces a second round.
+        t["appeal_deadline"] = self._now() + APPEAL_WINDOW
+        # `appealed` is one-shot for the whole trade: a re-arbitration after an
+        # appeal must not silently restore the right to appeal again.
+        t["appealed"]        = t.get("appealed", False)
+        t["status"]          = "arbitrated"
+        self._save_trade(trade_id, t)
+
+    # ── P2: appeal + finalise ──────────────────────────────────────────────
+
+    @gl.public.write
+    def appeal_verdict(self, trade_id: u256) -> None:
+        """Open the application-level appeal window (P2, second phase).
+
+        A bonded re-arbitration: any party to the trade may appeal within the
+        appeal window. The bond is small and flat — it exists so appealing is
+        not free, not as punishment. The trade re-enters `disputed` and a
+        fresh `arbitrate` call re-runs the full six-axis verification.
+        """
+        t = self._load_trade(trade_id)
+        _require(t, "Trade not found")
+        _require(t["status"] == "arbitrated", "Not arbitrated")
+        _require(
+            gl.message.sender_address in (Address(t["seller"]), Address(t["buyer"])),
+            "Only trade parties",
+        )
+        _require(self._now() <= t["appeal_deadline"], "Appeal window closed")
+        _require(not t.get("appealed", False), "Appeal already used")
+        t["appealed"] = True
+        t["status"]   = "disputed"
+        self._save_trade(trade_id, t)
+
+    @gl.public.write
+    def finalize_trade(self, trade_id: u256) -> None:
+        """Execute the recorded verdict once the appeal window has closed."""
+        t = self._load_trade(trade_id)
+        _require(t, "Trade not found")
+        _require(t["status"] == "arbitrated", "Not awaiting finalization")
+        _require(self._now() > t["appeal_deadline"], "Appeal window open")
+        t["status"] = "finalized"
+        self._save_trade(trade_id, t)
+        if t["verdict"] == "release":
             self._release(trade_id, t)
         else:
             self._refund(trade_id, t)

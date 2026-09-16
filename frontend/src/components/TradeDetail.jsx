@@ -3,6 +3,7 @@ import { useWallet } from '../WalletContext.jsx'
 import {
   getTrade, markPaid, releaseCrypto, openDispute,
   escalateAfterTimeout, cancelExpiredOrder, arbitrate, waitForTransaction,
+  appealVerdict, finalizeTrade,
 } from '../p2pClient.js'
 
 const PINATA_JWT = import.meta.env.VITE_PINATA_JWT
@@ -168,13 +169,23 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
         </div>
       )}
 
-      {isBuyer && trade.seller_bank_name && ['active', 'paid'].includes(trade.status) && (
+      {isBuyer && trade.seller_bank_commitment && ['active', 'paid'].includes(trade.status) && (
         <div className="bank-info-box">
           <div className="bank-info-title">Transfer to seller's account</div>
-          <div className="bank-info-row"><span className="label">Bank</span><strong>{trade.seller_bank_name}</strong></div>
-          <div className="bank-info-row"><span className="label">Account</span><strong className="bank-acct">{trade.seller_account_number}</strong></div>
-          <div className="bank-info-row"><span className="label">Name</span><strong>{trade.seller_account_name}</strong></div>
+          <div className="bank-info-row">
+            <span className="label">Bank details</span>
+            <strong>Private (P1)</strong>
+          </div>
+          <div className="bank-info-row"><span className="label">Commitment</span>
+            <code className="bank-acct">{String(trade.seller_bank_commitment).slice(0, 18)}…</code>
+          </div>
           <div className="bank-info-row"><span className="label">Amount</span><strong className="amount-fiat">{Number(trade.fiat_amount).toLocaleString()} {trade.fiat_currency}</strong></div>
+          <p className="action-desc">
+            The seller's account number is no longer public. Get it from the seller
+            off-chain (chat, QRIS, etc.). After you pay, the AI arbiter verifies the
+            recipient fields against this on-chain commitment — only an exact match
+            releases the crypto.
+          </p>
         </div>
       )}
 
@@ -327,6 +338,42 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
             </div>
           )}
 
+          {trade.status === 'arbitrated' && (
+            <div className="action-block">
+              <div className="ai-arbiter-box">
+                <span className="ai-icon">⚖️</span>
+                <div>
+                  <strong>Verdict: {trade.verdict === 'release' ? 'Release' : 'Refund'} (provisional)</strong>
+                  <p>The appeal window is open for 24h. If the verdict is wrong, either party
+                  can appeal once — the trade re-enters arbitration with the funds still locked.</p>
+                </div>
+              </div>
+              {trade.appeal_deadline > 0 && (
+                <div className="deadline-bar">
+                  {now > trade.appeal_deadline
+                    ? 'Appeal window closed — finalize to execute payout'
+                    : `${formatDeadline(trade.appeal_deadline)} left to appeal`}
+                </div>
+              )}
+              <div className="action-row">
+                {(isSeller || isBuyer) && !trade.appealed && (trade.appeal_deadline || 0) > 0 && now <= trade.appeal_deadline && (
+                  <button className="btn btn-danger flex-1"
+                    disabled={actionLoading}
+                    onClick={() => doAction(() => appealVerdict(walletClient, tradeId), "Appealing verdict")}>
+                    {actionLoading ? 'Loading' : 'Appeal Verdict (24h)'}
+                  </button>
+                )}
+                {(now > trade.appeal_deadline || trade.appeal_deadline === 0) && (
+                  <button className="btn btn-primary flex-1"
+                    disabled={actionLoading}
+                    onClick={() => doAction(() => finalizeTrade(walletClient, tradeId), "Finalizing trade")}>
+                    {actionLoading ? 'Loading' : 'Finalize & Execute Payout'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {!isSeller && !isBuyer && trade.status !== 'disputed' && (
             <div className="alert alert-warning">Connect as seller or buyer wallet to take action.</div>
           )}
@@ -339,10 +386,10 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
   )
 }
 
-const STEPS       = ['active', 'paid', 'disputed', 'settled']
-const STEP_LABELS = { active: 'Order Locked', paid: 'Proof Submitted', disputed: 'Disputed', settled: 'Settled' }
-const STEP_ICONS  = { active: 'L', paid: '$', disputed: '!', settled: 'F' }
-const LABELS      = { active: 'Active', paid: 'Awaiting Release', disputed: 'Disputed', settled: 'Settled' }
+const STEPS       = ['active', 'paid', 'disputed', 'arbitrated', 'settled']
+const STEP_LABELS = { active: 'Order Locked', paid: 'Proof Submitted', disputed: 'Disputed', arbitrated: 'AI Decided', settled: 'Finalized', finalized: 'Finalized' }
+const STEP_ICONS  = { active: 'L', paid: '$', disputed: '!', arbitrated: '⚖', settled: 'F', finalized: 'F' }
+const LABELS      = { active: 'Active', paid: 'Awaiting Release', disputed: 'Disputed', arbitrated: 'AI Decided', settled: 'Settled', finalized: 'Finalized' }
 
 function formatAmount(wei) {
   try { return (Number(BigInt(wei)) / 1e18).toFixed(4) } catch { return wei }

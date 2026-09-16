@@ -202,6 +202,35 @@ export async function cancelExpiredOrder(walletClient, tradeId) {
   })
 }
 
+// ── P2: appeal + finalize ─────────────────────────────────────────────────────
+
+export async function appealVerdict(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'appeal_verdict',
+    args: [BigInt(tradeId)],
+  })
+}
+
+export async function finalizeTrade(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'finalize_trade',
+    args: [BigInt(tradeId)],
+  })
+}
+
+/**
+ * Protocol-level appeal (GenLayer consensus): appeals the *arbitrate
+ * transaction itself*, triggering a fresh validation round. The SDK quotes
+ * the bond automatically (feeManager calculateMinAppealBond); a successful
+ * appeal returns the bond plus 1.5x as reward. Use this against the raw tx
+ * hash of the arbitration, alongside the contract-level `appeal_verdict`.
+ */
+export async function appealArbitrationTx(walletClient, txHash) {
+  return await walletClient.appealTransaction({ txId: txHash })
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Network helpers
 // ══════════════════════════════════════════════════════════════════════════════

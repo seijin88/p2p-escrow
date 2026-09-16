@@ -148,11 +148,12 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                     </span>
                   </div>
                 )}
-                {/* Bank info — only visible to buyer */}
-                {!isMine && offer.bank_name && (
-                  <div className="offer-bank">
-                    <strong>🏦 {offer.bank_name}</strong>
-                    <span>{offer.account_number} · a.n. {offer.account_name}</span>
+                {/* P1: plaintext bank details are no longer on-chain — the seller
+                    shares them off-chain (chat/QR) before the buyer pays */}
+                {!isMine && (
+                  <div className="offer-bank offer-bank-private">
+                    <span>🏦 Bank details are private since the P1 privacy update —
+                    ask the seller off-chain, then verify against the AI arbiter.</span>
                   </div>
                 )}
               </div>

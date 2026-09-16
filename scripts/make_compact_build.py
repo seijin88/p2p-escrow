@@ -46,10 +46,12 @@ PROTECTED = {
     "get_user_profile_contract", "post_offer", "cancel_offer", "expire_offer",
     "lock_order", "mark_paid", "release_crypto", "open_dispute",
     "escalate_after_seller_timeout", "cancel_expired_order", "arbitrate",
+    "appeal_verdict", "finalize_trade",
     "get_open_offers", "get_offer", "get_trade", "get_trade_history",
     "get_my_active_trades", "get_my_latest_trade_id", "get_counters",
     # python / SDK surface
     "self", "gl", "json", "typing", "datetime", "timedelta", "timezone",
+    "hashlib", "sha256", "hexdigest", "encode",
     "TreeMap", "Address", "u256", "any", "Exception", "True", "False", "None",
     "str", "int", "bool", "dict", "list", "len", "round", "abs", "sum",
     "range", "max", "min", "float", "isinstance", "bytes", "bytearray",
