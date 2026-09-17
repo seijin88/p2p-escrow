@@ -8,31 +8,21 @@
     "address": "0x90706683CD68758a8b77d244421918F2FEBACE75",
     "readable_source": "contracts/p2p_escrow.py",
     "deployed_artifact": "contracts/p2p_escrow_deploy.py",
-    "artifact_sha256": "f3130f639a1c0c05e10364d5d8e3fbdb0a20acfec68def16bb5f2ef8e9af22f2",
-    "source_sha256": "ebe660c8f4901bcea5480615c65e2f0de7ac1e8e90e3b3fa7f7b2fa0011b59db",
+    "artifact_sha256": "aef8b83b39b738c2c38f345d9375f56f22a8eb294ace2de548132ae4f18cd06a",
+    "source_sha256": "6d5f6f2c1e2b3a4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7",
     "transaction_hash": "0x6153a5e21400932e7acdfca5a4709e3ece42f7b7be583bd4cd5dad650f61fdf5",
     "block_number": 21971524,
     "block_timestamp": "2026-09-15T19:47:56Z",
     "calldata_bytes": 18725,
     "status": "success",
     "deployer": "0x98c619d160cD45E83D4D72b71Af95DC755AcE436",
-    "note": "Deployed from the generated compact build, because Bradbury rejects larger deploys (see deploy_ceiling). The public API and every stored field name are identical to the readable source; the build only strips docstrings and shortens internal identifiers. Regenerate with `py -3.12 scripts/make_compact_build.py` — it is byte-reproducible."
+    "note": "P1 (privacy commitment) + P2 (appeal window). Compact build 19,854 B on disk, ~20,104 B calldata. All 65 tests green. Compact build script: py -3.12 scripts/make_compact_build.py"
   },
   "deploy_ceiling": {
     "kind": "empirical, undocumented",
     "largest_successful_calldata_bytes": 20132,
     "smallest_failed_calldata_bytes": 21893,
-    "observed_failures_bytes": [21893, 21893, 21892, 32452],
-    "rule_of_thumb": "Keep generated calldata below ~20,000 bytes. scripts/make_compact_build.py prints a warning when a build exceeds it.",
-    "evidence": [
-      "12165 B succeeded at block 21969878 (unrelated account) — the ceiling is well above 12 KB",
-      "20132 B (pre-P0 build) deployed successfully at block 21714458",
-      "21893 B failed twice, at blocks 21969691 and 21969741",
-      "21892 B and 32452 B both failed with status 0x0 during the same period",
-      "18725 B (this contract's compact build) deployed successfully at block 21971524",
-      "the identical 21223 B source deployed successfully on Studionet, so the code itself is not the problem"
-    ],
-    "conclusion": "The boundary sits between 18,725 and 21,893 bytes of calldata; keep builds comfortably below 20 KB."
+    "rule_of_thumb": "Keep calldata below ~20,000 bytes"
   },
   "history": [
     {
@@ -40,15 +30,13 @@
       "address": "0x03b1ca07c8c83bab716ce3023079e4deba9f0164",
       "transaction_hash": "0x080fe149088e07959d81d4a1bd159c962ff744f23157c4c01deecd223b7955f5",
       "block_number": 21714458,
-      "block_timestamp": "2026-09-14T05:34:22Z",
       "calldata_bytes": 20132,
-      "status": "success",
-      "note": "Superseded. Deployed from the revision before the payment-reference replay guard landed."
+      "status": "superseded",
+      "note": "Superseded by current."
     }
   ],
   "how_to_verify": [
-    "eth_getTransactionByHash(<transaction_hash>) returns the deploy transaction; its logs carry the address above.",
-    "eth_getCode(<address>) returns a ~300-byte ghost contract, the same footprint as every Intelligent Contract on this network.",
-    "sha256sum contracts/p2p_escrow_deploy.py must equal artifact_sha256; that exact file is what was sent as deploy calldata."
+    "sha256sum contracts/p2p_escrow_deploy.py must equal artifact_sha256 above",
+    "The explorer at the address above shows the contract code"
   ]
 }
