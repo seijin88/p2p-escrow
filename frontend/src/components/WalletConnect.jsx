@@ -9,12 +9,12 @@ export default function WalletConnect() {
       <div className="wallet-connected">
         {isWrongNetwork && (
           <button className="btn btn-danger btn-sm" onClick={switchToBradbury}>
-            ⚠️ Switch Network
+            Switch Network
           </button>
         )}
         <div className="wallet-info">
           <span className="dot green" />
-          <span className="wallet-badge">{walletType === 'rabby' ? '🐰' : '🦊'}</span>
+          <span className="wallet-badge">{walletType === 'rabby' ? 'R' : 'M'}</span>
           <span className="wallet-address">{address.slice(0, 6)}…{address.slice(-4)}</span>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={disconnect}>Disconnect</button>
@@ -25,7 +25,7 @@ export default function WalletConnect() {
   return (
     <div className="wallet-disconnected">
       <button className="btn btn-primary btn-sm" onClick={connect} disabled={isConnecting}>
-        {isConnecting ? '⟳ Connecting…' : '🔗 Connect Wallet'}
+        {isConnecting ? 'Connecting…' : 'Connect Wallet'}
       </button>
       {error && <span className="wallet-error">{error}</span>}
     </div>

@@ -31,7 +31,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
       // Fix 4: recover trade_id immediately after lock
       const tradeId = await getMyLatestTradeId(address, 'buyer')
       const tid = Number(tradeId)
-      setActionState(s => ({ ...s, [offerId]: { loading: false, status: `✅ Order locked! Redirecting to Trade #${tid}…`, error: '' } }))
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: `Order locked! Redirecting to Trade #${tid}…`, error: '' } }))
       await refresh()
       onTradeCreated?.(tid)
     } catch (err) {
@@ -45,7 +45,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
     try {
       const hash = await expireOffer(walletClient, offerId)
       await waitForTransaction(hash)
-      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '✅ Offer expired, crypto returned', error: '' } }))
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: 'Offer expired, crypto returned', error: '' } }))
       await refresh()
     } catch (err) {
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Failed' } }))
@@ -58,7 +58,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
     try {
       const hash = await cancelOffer(walletClient, offerId)
       await waitForTransaction(hash)
-      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '✅ Offer cancelled', error: '' } }))
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: 'Offer cancelled', error: '' } }))
       await refresh()
     } catch (err) {
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Failed' } }))
@@ -69,7 +69,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
     <div className="offer-board">
       <div className="board-header">
         <div>
-          <h2 className="board-title">⚡ Open Offers</h2>
+          <h2 className="board-title">Open Offers</h2>
           {counters && (
             <p className="board-subtitle">
               {counters.open_offers} open · {counters.total_trades} trades total
@@ -77,13 +77,13 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
           )}
         </div>
         <button className="btn btn-ghost btn-sm" onClick={refresh} disabled={loading}>
-          {loading ? '⟳' : '↻ Refresh'}
+          {loading ? '' : '↻ Refresh'}
         </button>
       </div>
 
       {loading && offers.length === 0 && (
         <div className="empty-state">
-          <span className="empty-icon">⟳</span>
+          <span className="empty-icon"><span className="spinner">◌</span></span>
           <p>Loading offers…</p>
         </div>
       )}
@@ -144,7 +144,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                   <div className="offer-meta-row">
                     <span className="label">Expires</span>
                     <span className={offerExpired(offer.expires_at) ? 'text-red' : 'text-yellow'}>
-                      {offerExpired(offer.expires_at) ? '⚠️ Expired' : `⏱ ${expiryCountdown(offer.expires_at)}`}
+                      {offerExpired(offer.expires_at) ? 'Expired' : `${expiryCountdown(offer.expires_at)}`}
                     </span>
                   </div>
                 )}
@@ -152,8 +152,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                     shares them off-chain (chat/QR) before the buyer pays */}
                 {!isMine && (
                   <div className="offer-bank offer-bank-private">
-                    <span>🏦 Bank details are private since the P1 privacy update —
-                    ask the seller off-chain, then verify against the AI arbiter.</span>
+                    Bank details are private since the P1 privacy update — ask the seller off-chain, then verify against the AI arbiter.
                   </div>
                 )}
               </div>
@@ -173,7 +172,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                 </div>
               )}
               {state.error && (
-                <div className="alert alert-error offer-alert">❌ {state.error}</div>
+                <div className="alert alert-error offer-alert">{state.error}</div>
               )}
 
               <div className="offer-actions">
@@ -183,7 +182,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                     onClick={() => handleCancel(offer.offer_id)}
                     disabled={state.loading}
                   >
-                    {state.loading ? '⟳' : '✕ Cancel Offer'}
+                    {state.loading ? '' : '✕ Cancel Offer'}
                   </button>
                 ) : offerExpired(offer.expires_at) ? (
                   <button
@@ -191,7 +190,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                     onClick={() => handleExpire(offer.offer_id)}
                     disabled={state.loading || !address}
                   >
-                    {state.loading ? '⟳' : '♻️ Expire & Return Funds'}
+                    {state.loading ? '' : 'Expire & Return Funds'}
                   </button>
                 ) : (
                   <button
@@ -202,7 +201,7 @@ export default function OfferBoard({ onTradeCreated, hasProfile, onNeedProfile }
                     }}
                     disabled={state.loading || !address}
                   >
-                    {state.loading ? '⟳ AI verifying…' : '🔒 Buy — Lock Order'}
+                    {state.loading ? 'Verifying…' : 'Buy — Lock Order'}
                   </button>
                 )}
               </div>

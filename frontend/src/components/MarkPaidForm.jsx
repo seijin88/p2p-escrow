@@ -22,7 +22,7 @@ export default function MarkPaidForm({ offerData, onSuccess }) {
       setTxHash(hash)
       setStatus('Waiting for confirmation…')
       await waitForTransaction(hash)
-      setStatus('✅ Payment marked! Seller now has 30 minutes to release.')
+      setStatus('Payment marked! Seller now has 30 minutes to release.')
       onSuccess?.()
     } catch (err) {
       setError(err.message || 'Transaction failed')
@@ -39,7 +39,7 @@ export default function MarkPaidForm({ offerData, onSuccess }) {
   return (
     <div className="form-container">
       <div className="form-header">
-        <span className="form-icon">💸</span>
+        <span className="form-icon" aria-hidden="true">◈</span>
         <div>
           <h3 className="form-title">Mark as Paid (Buyer)</h3>
           <p className="form-desc">Pay the seller off-chain, then upload your proof of payment here.</p>
@@ -48,7 +48,7 @@ export default function MarkPaidForm({ offerData, onSuccess }) {
 
       {deadlineStr && (
         <div className="alert alert-warning" style={{ marginBottom: 16 }}>
-          ⏱ Payment deadline: <strong>{deadlineStr}</strong>
+          Payment deadline: <strong>{deadlineStr}</strong>
         </div>
       )}
 
@@ -90,12 +90,12 @@ export default function MarkPaidForm({ offerData, onSuccess }) {
         )}
 
         <button className="btn btn-primary" type="submit" disabled={loading || !address}>
-          {loading ? '⟳ Submitting…' : '✅ I\'ve Paid — Submit Proof'}
+          {loading ? 'Submitting…' : 'I\'ve Paid — Submit Proof'}
         </button>
       </form>
 
       {status && <div className="alert alert-info">{status}{txHash && <div className="tx-hash">Tx: <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer" className="link">{txHash.slice(0,20)}…</a></div>}</div>}
-      {error  && <div className="alert alert-error">❌ {error}</div>}
+      {error  && <div className="alert alert-error">{error}</div>}
     </div>
   )
 }

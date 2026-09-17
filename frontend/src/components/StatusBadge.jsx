@@ -1,23 +1,20 @@
 import React from 'react'
 
 const STATUS_CONFIG = {
-  idle:             { label: 'Idle',             cls: 'badge-gray',   icon: '○' },
-  offered:          { label: 'Offer Open',        cls: 'badge-blue',   icon: '📢' },
-  locked:           { label: 'Order Locked',      cls: 'badge-yellow', icon: '🔒' },
-  paid:             { label: 'Fiat Paid',         cls: 'badge-purple', icon: '💸' },
-  released:         { label: 'Released',          cls: 'badge-green',  icon: '✅' },
-  disputed:         { label: 'Disputed',          cls: 'badge-red',    icon: '⚠️' },
-  arbitrated:       { label: 'AI Decided',         cls: 'badge-purple', icon: '⚖️' },
-  settled:          { label: 'Settled',           cls: 'badge-green',  icon: '🏁' },
-  finalized:         { label: 'Finalized',          cls: 'badge-green',  icon: '🏁' },
+  idle:             { label: 'Idle',             cls: 'badge-gray'   },
+  offered:          { label: 'Offer Open',        cls: 'badge-blue'   },
+  locked:           { label: 'Order Locked',      cls: 'badge-yellow' },
+  paid:             { label: 'Fiat Paid',         cls: 'badge-purple' },
+  released:         { label: 'Released',          cls: 'badge-green'  },
+  disputed:         { label: 'Disputed',          cls: 'badge-red'    },
+  arbitrated:       { label: 'AI Decided',         cls: 'badge-purple' },
+  settled:          { label: 'Settled',           cls: 'badge-green'  },
+  finalized:         { label: 'Finalized',          cls: 'badge-green'  },
 }
 
 export default function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] || { label: status, cls: 'badge-gray', icon: '?' }
+  const cfg = STATUS_CONFIG[status] || { label: status, cls: 'badge-gray' }
   return (
-    <span className={`status-badge ${cfg.cls}`}>
-      <span>{cfg.icon}</span>
-      {cfg.label}
-    </span>
+    <span className={`status-badge ${cfg.cls}`}>{cfg.label}</span>
   )
 }

@@ -341,7 +341,7 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
           {trade.status === 'arbitrated' && (
             <div className="action-block">
               <div className="ai-arbiter-box">
-                <span className="ai-icon">⚖️</span>
+                <span className="ai-icon" aria-hidden="true">◈</span>
                 <div>
                   <strong>Verdict: {trade.verdict === 'release' ? 'Release' : 'Refund'} (provisional)</strong>
                   <p>The appeal window is open for 24h. If the verdict is wrong, either party

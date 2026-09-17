@@ -18,7 +18,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
       setTxHash(hash)
       setStatus('Waiting for confirmation…')
       await waitForTransaction(hash)
-      setStatus(`✅ ${label} confirmed.`)
+      setStatus(`${label} confirmed.`)
       onSuccess?.()
     } catch (err) {
       setError(err.message || 'Transaction failed')
@@ -35,7 +35,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
   return (
     <div className="form-container">
       <div className="form-header">
-        <span className="form-icon">⚡</span>
+        <span className="form-icon" aria-hidden="true">◈</span>
         <div>
           <h3 className="form-title">Release / Dispute</h3>
           <p className="form-desc">Seller: confirm receipt of fiat and release crypto. Or open a dispute if payment looks wrong.</p>
@@ -63,7 +63,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
             onClick={() => handleAction(releaseCrypto, 'Releasing crypto to buyer')}
             disabled={loading}
           >
-            ✅ Release Crypto to Buyer
+            Release Crypto to Buyer
           </button>
         )}
 
@@ -74,7 +74,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
             onClick={() => handleAction(openDispute, 'Opening dispute')}
             disabled={loading}
           >
-            ⚠️ Dispute — Payment Not Received
+            Dispute — Payment Not Received
           </button>
         )}
 
@@ -85,7 +85,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
             onClick={() => handleAction(escalateAfterTimeout, 'Escalating to AI arbiter')}
             disabled={loading}
           >
-            🚨 Seller Not Responding — Escalate to AI
+            Seller Not Responding — Escalate to AI
           </button>
         )}
 
@@ -96,7 +96,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
             onClick={() => handleAction(cancelExpiredOrder, 'Cancelling expired order')}
             disabled={loading}
           >
-            ❌ Cancel — Buyer Didn't Pay in Time
+            Cancel — Buyer Didn't Pay in Time
           </button>
         )}
 
@@ -108,7 +108,7 @@ export default function ReleasePanel({ offerData, onSuccess }) {
       </div>
 
       {status && <div className="alert alert-info" style={{ marginTop: 12 }}>{status}{txHash && <div className="tx-hash">Tx: <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer" className="link">{txHash.slice(0,20)}…</a></div>}</div>}
-      {error  && <div className="alert alert-error" style={{ marginTop: 12 }}>❌ {error}</div>}
+      {error  && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
     </div>
   )
 }

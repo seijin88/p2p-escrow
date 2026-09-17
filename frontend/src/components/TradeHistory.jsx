@@ -106,7 +106,7 @@ export default function TradeHistory({ onViewTrade, defaultTab = 'all' }) {
       </div>
 
       {loading && (
-        <div className="empty-state"><span className="spinner">⟳</span><p>Loading…</p></div>
+        <div className="empty-state"><span className="spinner">◌</span><p>Loading…</p></div>
       )}
 
       {!loading && trades.length === 0 && (
@@ -185,7 +185,7 @@ function TradeRow({ trade, address, onView }) {
       <div className="history-row-right">
         {isSettled ? (
           <span className={`verdict-pill ${trade.verdict}`}>
-            {trade.verdict === 'release' ? '✅ Released' : '🔄 Refunded'}
+            {trade.verdict === 'release' ? 'Released' : 'Refunded'}
           </span>
         ) : (
           <span className={`status-pill status-${trade.status}`}>{STATUS_LABELS[trade.status] || trade.status}</span>

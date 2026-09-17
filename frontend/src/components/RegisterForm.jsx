@@ -31,7 +31,7 @@ export default function RegisterForm({ onRegistered }) {
       } catch {
         // Transaction may already be accepted even if polling timed out
       }
-      setStatus('✅ Profile reported!')
+      setStatus('Profile reported!')
       setTimeout(() => onRegistered?.({
         bank_name: form.bankName,
         account_number: form.accountNumber,
@@ -48,7 +48,7 @@ export default function RegisterForm({ onRegistered }) {
     <div className="register-page">
       <div className="register-card">
         <div className="register-header">
-          <span className="register-icon">🏦</span>
+          <span className="register-icon" aria-hidden="true">◈</span>
           <div>
             <h2 className="register-title">Report Bank Account</h2>
             <p className="register-desc">
@@ -59,7 +59,7 @@ export default function RegisterForm({ onRegistered }) {
         </div>
 
         <div className="tips-box">
-          <strong>🔒 Why is this required?</strong>
+          <strong>Why is this required?</strong>
           <ul>
             <li>The escrow refuses any offer or lock from an address with no reported profile</li>
             <li>Sellers: buyers see your account number automatically — no manual sharing</li>
@@ -108,12 +108,12 @@ export default function RegisterForm({ onRegistered }) {
           </div>
 
           <button className="btn btn-primary w-full" type="submit" disabled={loading || !address}>
-            {loading ? '⟳ Reporting…' : '✅ Report & Continue'}
+            {loading ? 'Reporting…' : 'Report & Continue'}
           </button>
         </form>
 
         {status && <div className="alert alert-info">{status}</div>}
-        {error  && <div className="alert alert-error">❌ {error}</div>}
+        {error  && <div className="alert alert-error">{error}</div>}
       </div>
     </div>
   )

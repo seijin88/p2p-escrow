@@ -18,7 +18,7 @@ export default function ArbitratePanel({ offerData, verdictData, onSuccess }) {
       setTxHash(hash)
       setStatus('Waiting for AI consensus…')
       await waitForTransaction(hash)
-      setStatus('✅ AI verdict reached. Funds have been distributed.')
+      setStatus('AI verdict received. Funds queued for distribution.')
       onSuccess?.()
     } catch (err) {
       setError(err.message || 'Transaction failed')
@@ -33,7 +33,7 @@ export default function ArbitratePanel({ offerData, verdictData, onSuccess }) {
   return (
     <div className="form-container">
       <div className="form-header">
-        <span className="form-icon">🤖</span>
+        <span className="form-icon" aria-hidden="true">◈</span>
         <div>
           <h3 className="form-title">AI Arbitration</h3>
           <p className="form-desc">The AI reads the buyer's payment proof and decides who gets the crypto.</p>
@@ -43,13 +43,13 @@ export default function ArbitratePanel({ offerData, verdictData, onSuccess }) {
       {isDisputed && (
         <>
           <div className="tips-box">
-            <strong>🤖 How AI arbitration works</strong>
+            <strong>AI Arbitration</strong>
             <ul>
               <li>AI fetches the buyer's proof URL and reads the content directly</li>
               <li>AI checks: correct amount, correct recipient, accepted payment method</li>
-              <li>If proof is valid → crypto released to buyer</li>
-              <li>If proof is missing/wrong → crypto refunded to seller</li>
-              <li>Decision is final — multiple AI validators must agree (GenLayer consensus)</li>
+              <li>If proof is valid — crypto released to buyer</li>
+              <li>If proof is missing/wrong — crypto refunded to seller</li>
+              <li>Decision is provisional — 24h appeal window follows</li>
             </ul>
           </div>
 
@@ -63,7 +63,7 @@ export default function ArbitratePanel({ offerData, verdictData, onSuccess }) {
           )}
 
           <button className="btn btn-secondary" onClick={handleArbitrate} disabled={loading || !address}>
-            {loading ? '⟳ AI is evaluating…' : '🤖 Trigger AI Arbitration'}
+            {loading ? 'AI is evaluating…' : 'Trigger AI Arbitration'}
           </button>
         </>
       )}
@@ -71,7 +71,7 @@ export default function ArbitratePanel({ offerData, verdictData, onSuccess }) {
       {isSettled && verdictData && (
         <div className={`verdict-card ${verdictData.verdict}`}>
           <div className="verdict-header">
-            <span className="verdict-icon">{verdictData.verdict === 'release' ? '✅' : '🔄'}</span>
+            <span className="verdict-icon" aria-hidden="true">{verdictData.verdict === 'release' ? '→' : '↩'}</span>
             <div>
               <div className="verdict-title">
                 {verdictData.verdict === 'release' ? 'Crypto Released to Buyer' : 'Crypto Refunded to Seller'}
@@ -95,7 +95,7 @@ export default function ArbitratePanel({ offerData, verdictData, onSuccess }) {
       )}
 
       {status && <div className="alert alert-info" style={{ marginTop: 12 }}>{status}{txHash && <div className="tx-hash">Tx: <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer" className="link">{txHash.slice(0,20)}…</a></div>}</div>}
-      {error  && <div className="alert alert-error" style={{ marginTop: 12 }}>❌ {error}</div>}
+      {error  && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
     </div>
   )
 }

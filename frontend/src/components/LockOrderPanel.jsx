@@ -18,7 +18,7 @@ export default function LockOrderPanel({ offerData, onSuccess }) {
       setTxHash(hash)
       setStatus('Waiting for confirmation…')
       await waitForTransaction(hash)
-      setStatus('✅ Order locked! Now pay the seller and submit proof.')
+      setStatus('Order locked! Now pay the seller and submit proof.')
       onSuccess?.()
     } catch (err) {
       setError(err.message || 'Transaction failed')
@@ -30,7 +30,7 @@ export default function LockOrderPanel({ offerData, onSuccess }) {
   return (
     <div className="form-container">
       <div className="form-header">
-        <span className="form-icon">🔒</span>
+        <span className="form-icon" aria-hidden="true">◈</span>
         <div>
           <h3 className="form-title">Lock Order (Buyer)</h3>
           <p className="form-desc">Commit to this trade. AI will verify the seller's rate is fair before locking.</p>
@@ -63,7 +63,7 @@ export default function LockOrderPanel({ offerData, onSuccess }) {
           </div>
 
           <div className="tips-box" style={{ marginTop: 16 }}>
-            <strong>⚠️ Before you lock</strong>
+            <strong>Before you lock</strong>
             <ul>
               <li>AI will check the rate is within ±10% of market — if not, the transaction will revert</li>
               <li>After locking, you have <strong>1 hour</strong> to pay and upload proof</li>
@@ -72,7 +72,7 @@ export default function LockOrderPanel({ offerData, onSuccess }) {
           </div>
 
           <button className="btn btn-primary" onClick={handleLock} disabled={loading || !address}>
-            {loading ? '⟳ AI verifying rate…' : '🔒 Lock Order & Commit to Trade'}
+            {loading ? 'Locking…' : 'Lock Order & Commit to Trade'}
           </button>
         </>
       ) : (
@@ -80,7 +80,7 @@ export default function LockOrderPanel({ offerData, onSuccess }) {
       )}
 
       {status && <div className="alert alert-info" style={{ marginTop: 12 }}>{status}{txHash && <div className="tx-hash">Tx: <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer" className="link">{txHash.slice(0,20)}…</a></div>}</div>}
-      {error  && <div className="alert alert-error" style={{ marginTop: 12 }}>❌ {error}</div>}
+      {error  && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
     </div>
   )
 }

@@ -37,7 +37,7 @@ export default function PostOfferForm({ onSuccess, onClose }) {
       })
       setStatus('Waiting for confirmation…')
       await waitForTransaction(hash)
-      setStatus('✅ Offer posted!')
+      setStatus('Offer posted!')
       setTimeout(() => { onSuccess?.(); onClose?.() }, 1200)
     } catch (err) {
       setError(err.message || 'Transaction failed')
@@ -108,12 +108,12 @@ export default function PostOfferForm({ onSuccess, onClose }) {
           </div>
 
           <button className="btn btn-primary" type="submit" disabled={loading || !address}>
-            {loading ? '⟳ Processing…' : `🔒 Lock ${form.token} & Post Offer`}
+            {loading ? 'Posting…' : `Lock ${form.token} & Post Offer`}
           </button>
         </form>
 
         {status && <div className="alert alert-info">{status}</div>}
-        {error  && <div className="alert alert-error">❌ {error}</div>}
+        {error  && <div className="alert alert-error">{error}</div>}
       </div>
     </div>
   )
