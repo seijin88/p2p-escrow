@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import './landing.css'
+import '../landing.css'
 
 const LINES = [
   {
