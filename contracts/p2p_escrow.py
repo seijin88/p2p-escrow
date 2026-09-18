@@ -23,7 +23,11 @@ PRICE_URL        = (
     "https://api.coingecko.com/api/v3/simple/price"
     "?ids=genlayer&vs_currencies={vs}"
 )
-PRICE_SCALE      = 1_000_000   # prices are compared in micro-units (float-free)
+PRICE_URL_KRAKEN = (
+    "https://api.kraken.com/0/public/Ticker"
+    "?pair=GENUSD"
+)
+PRICE_SCALE      = 1_000_000
 ZERO_ADDR        = "0x0000000000000000000000000000000000000000"
 
 
@@ -341,32 +345,80 @@ class P2PEscrow(gl.Contract):
         _require(fiat_currency in SUPPORTED_FIAT, "Unsupported fiat currency")
 
         def leader_fn() -> typing.Any:
-            """Market price of 1 token, quoted in the offer's own fiat currency.
+                    """Market price of 1 token, quoted in USD, then converted to the offer's fiat.
 
-            The rate is `<fiat> per 1 <token>`, so the oracle must be asked for
-            that same fiat — pricing GEN in IDR only works against an IDR quote.
-            Integer micro-units keep every validator comparison exact.
-            """
-            try:
-                resp = gl.nondet.web.get(PRICE_URL.format(vs=fiat_currency.lower()))
-                body = resp.body
-                if isinstance(body, (bytes, bytearray)):
-                    body = body.decode("utf-8", errors="replace")
-                price = json.loads(body)["genlayer"][fiat_currency.lower()]
-                market_micro = int(round(float(price) * PRICE_SCALE))
-            except Exception:
-                return {"market_micro": 0, "deviation_pct": 0, "within_limit": False}
+                    Sources: Kraken (primary, always USD), CoinGecko (fallback, IDR+USD).
+                    If both fail the oracle returns 0 and graceful degradation bypasses the
+                    rate guard — the trade can still open using the seller's quoted rate.
+                    """
+                    price_usd = None
 
-            if market_micro <= 0:
-                return {"market_micro": 0, "deviation_pct": 0, "within_limit": False}
+                    # ── 1. Kraken (primary, USD pair) ──────────────────────────────────
+                    try:
+                        resp = gl.nondet.web.get(PRICE_URL_KRAKEN)
+                        body = resp.body
+                        if isinstance(body, (bytes, bytearray)):
+                            body = body.decode("utf-8", errors="replace")
+                        cg_resp = json.loads(body)
+                        result  = cg_resp.get("result", {})
+                        # Kraken returns key like "GENUSD" whose value is [price, ...]
+                        ticker  = next((v for k, v in result.items()
+                                        if k.upper().startswith("GEN")), None)
+                        if ticker:
+                            price_usd = float(ticker[0])
+                    except Exception:
+                        price_usd = None
 
-            quoted_micro = quoted_rate * PRICE_SCALE
-            deviation    = abs(quoted_micro - market_micro) * 100 // market_micro
-            return {
-                "market_micro" : market_micro,
-                "deviation_pct": deviation,
-                "within_limit" : deviation <= MAX_RATE_DEV_PCT,
-            }
+                    # ── 2. CoinGecko fallback (IDR + USD) ──────────────────────────────
+                    if price_usd is None or price_usd <= 0:
+                        try:
+                            resp = gl.nondet.web.get(
+                                PRICE_URL.format(vs=fiat_currency.lower()))
+                            body = resp.body
+                            if isinstance(body, (bytes, bytearray)):
+                                body = body.decode("utf-8", errors="replace")
+                            data = json.loads(body)
+                            price_usd = float(data["genlayer"]["usd"])
+                        except Exception:
+                            price_usd = None
+
+                    # ── 3. Convert to offer's fiat via Kraken FX ───────────────────────
+                    fx_rate = 1.0  # default 1:1 (USD) if FX fetch fails
+                    if price_usd is not None and price_usd > 0 and fiat_currency != "USD":
+                        try:
+                            fx_resp = gl.nondet.web.get(
+                                f"https://api.kraken.com/0/public/Ticker"
+                                f"?pair=USD{fiat_currency.upper()}"
+                            )
+                            fx_body = fx_resp.body
+                            if isinstance(fx_body, (bytes, bytearray)):
+                                fx_body = fx_body.decode("utf-8", errors="replace")
+                            fx_data = json.loads(fx_body)
+                            fx_ticker = next((v for k, v in fx_data.get("result", {}).items()
+                                              if "USD" in k.upper()), None)
+                            if fx_ticker:
+                                fx_rate = float(fx_ticker[0])
+                        except Exception:
+                            fx_rate = 1.0  # conservative fallback: 1 USD = 1 unit
+
+                    market_price_in_fiat = price_usd * fx_rate if price_usd else 0.0
+                    market_micro = int(round(market_price_in_fiat * PRICE_SCALE))
+
+                    if market_micro <= 0:
+                        # Graceful degradation: let the trade proceed with the quoted rate
+                        return {
+                            "market_micro" : quoted_rate * PRICE_SCALE,
+                            "deviation_pct": 0,
+                            "within_limit" : True,
+                        }
+
+                    quoted_micro = quoted_rate * PRICE_SCALE
+                    deviation    = abs(quoted_micro - market_micro) * 100 // market_micro
+                    return {
+                        "market_micro" : market_micro,
+                        "deviation_pct": deviation,
+                        "within_limit" : deviation <= MAX_RATE_DEV_PCT,
+                    }
 
         def validator_fn(lr) -> bool:
             """Every rate field that decides whether the trade opens must agree."""

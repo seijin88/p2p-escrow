@@ -46,19 +46,32 @@ def post_offer(vm, contract, seller, fiat="IDR", rate=RATE):
     return oid
 
 def mock_market(vm, price=MARKET_PRICE, fiat="idr"):
-    """Mock the price oracle the contract reads (CoinGecko simple-price JSON).
+    """Mock both price sources the contract reads:
+    - Kraken (primary, always returns USD price)
+    - CoinGecko (fallback, returns usd price)
 
-    The offer's rate is `<fiat> per 1 GEN`, so the oracle must be asked in that
-    same fiat — the contract builds the URL from the offer's currency.
+    The offer's rate is `<fiat> per 1 GEN`. Kraken always returns USD;
+    CoinGecko fallback returns usd key (not fiat).
     """
+    # CoinGecko response (used as USD fallback)
     vm.mock_web(
         "api.coingecko.com",
-        {"status": 200, "body": json.dumps({"genlayer": {fiat: price}})},
+        {"status": 200, "body": json.dumps({"genlayer": {"usd": price}})},
     )
+    # Kraken response — GENUSD pair, price in [0] index
+    kraken_body = {
+        "error": [],
+        "result": {
+            "GENUSD": [str(price), "1.0", "1.0", "1.0", "1.0", "1.0", "1.0",
+                        "1.0", "1.0", "1.0"]
+        }
+    }
+    vm.mock_web("api.kraken.com", {"status": 200, "body": json.dumps(kraken_body)})
 
 def mock_market_broken(vm):
-    """Oracle returns something unparseable (outage / captcha page)."""
+    """Both oracles return something unparseable (outage / rate limit)."""
     vm.mock_web("api.coingecko.com", {"status": 200, "body": "<html>rate limited</html>"})
+    vm.mock_web("api.kraken.com", {"status": 200, "body": "Service Unavailable"})
 
 def mock_rate(vm, within_limit=True):
     """Market price that is inside (default) or outside the ±10% band."""

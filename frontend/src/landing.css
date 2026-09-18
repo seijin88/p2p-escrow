@@ -1,0 +1,60 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   LANDING (terminal boot screen)
+   ══════════════════════════════════════════════════════════════════════════ */
+.landing {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 32px 16px; gap: 28px;
+}
+.terminal-window {
+  width: 100%; max-width: 720px;
+  background: #0b0d11;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+.terminal-titlebar {
+  display: flex; align-items: center; gap: 7px;
+  background: #161a20; border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+}
+.t-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.t-dot.red { background: #ff5f57; } .t-dot.yellow { background: #febc2e; } .t-dot.green { background: #28c840; }
+.terminal-title { margin-left: auto; font-size: 0.72rem; color: var(--text-muted); }
+.terminal-body { padding: 18px 20px 14px; font-size: 0.82rem; line-height: 1.7; color: var(--text-secondary); }
+.terminal-ascii {
+  color: var(--accent); font-size: 0.58rem; line-height: 1.15;
+  margin-bottom: 14px; user-select: none;
+}
+.term-line { margin-bottom: 10px; }
+.t-prompt { color: var(--green); font-weight: 700; }
+.t-cmd { color: var(--text-primary); }
+.t-out { display: block; padding-left: 14px; color: var(--text-secondary); font-size: 0.78rem; line-height: 1.7; }
+.t-input-line { display: flex; align-items: center; gap: 6px; }
+.t-cursor { color: var(--accent); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.landing-cta { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.btn-lg { padding: 14px 34px; font-size: 1rem; font-family: var(--font-mono); }
+.landing-hint { font-size: 0.75rem; color: var(--text-muted); }
+.landing-hint code { color: var(--accent); }
+
+.landing-features {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  max-width: 760px; width: 100%;
+}
+.feat {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 14px 16px;
+}
+.feat-key { font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent); letter-spacing: .1em; }
+.feat h3 { font-size: 0.85rem; font-weight: 700; margin: 6px 0 5px; }
+.feat p { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.55; }
+
+@media (max-width: 640px) {
+  .landing-features { grid-template-columns: 1fr; }
+  .terminal-ascii { display: none; }
+}

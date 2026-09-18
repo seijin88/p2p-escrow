@@ -6,6 +6,7 @@ import PostOfferForm from './components/PostOfferForm.jsx'
 import TradeDetail from './components/TradeDetail.jsx'
 import TradeHistory from './components/TradeHistory.jsx'
 import RegisterForm from './components/RegisterForm.jsx'
+import Landing from './components/Landing.jsx'
 import { isProfileReported, getProfile } from './profileClient.js'
 import { P2P_ESCROW_ADDRESS } from './p2pClient.js'
 
@@ -13,11 +14,12 @@ const PROFILE_KEY = 'p2p_escrow_profile'
 
 export default function App() {
   const { address, isWrongNetwork, switchToBradbury } = useWallet()
-  const [view, setView] = useState('board')
+  const [view, setView]       = useState('board')
   const [activeTrade, setActiveTrade] = useState(null)
   const [showPostForm, setShowPostForm] = useState(false)
   const [profileChecked, setProfileChecked] = useState(false)
-  const [showRegister, setShowRegister] = useState(false)
+  const [showRegister, setShowRegister]     = useState(false)
+  const [showLanding, setShowLanding]       = useState(true)
 
   const [hasProfile, setHasProfile] = useState(() => {
     try { return !!JSON.parse(localStorage.getItem(PROFILE_KEY)) } catch { return false }
@@ -34,8 +36,6 @@ export default function App() {
 
   const checkProfile = useCallback(async () => {
     if (!address) { setProfileChecked(true); return }
-    // Profiles live on the escrow, so this is the same check the contract makes
-    // before it lets anyone post or lock.
     try {
       const ok = await isProfileReported(address)
       if (ok) {
@@ -49,20 +49,24 @@ export default function App() {
 
   useEffect(() => { checkProfile() }, [checkProfile])
 
-  function goToTrade(id) { setActiveTrade(id); setView('trade') }
-  function goBack() { setActiveTrade(null); setView('board') }
-
+  function goToTrade(id)    { setActiveTrade(id); setView('trade') }
+  function goBack()         { setActiveTrade(null); setView('board') }
   function handleRegistered(data) {
     setShowRegister(false)
     saveProfile(data || { account_name: 'Registered' })
     setTimeout(checkProfile, 5000)
   }
+  function handleLaunch()   { setShowLanding(false) }
 
   const NAV = [
     { id: 'board',    label: 'Offers' },
     { id: 'mytrades', label: 'My Trades' },
     { id: 'history',  label: 'History' },
   ]
+
+  if (showLanding) {
+    return <Landing onLaunch={handleLaunch} />
+  }
 
   return (
     <div className="app-container">
