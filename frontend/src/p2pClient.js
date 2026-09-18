@@ -117,6 +117,20 @@ export async function getCounters() {
   })
 }
 
+/**
+ * Display-rate data that matches actual settlement.
+ * Returns { quoted_rate, market_rate_at_lock, deviation_pct, rate_within_limit,
+ * fiat_currency, ... } — all three rates come from the trade's on-chain lock
+ * snapshot, never recomputed, so what the UI shows is what settlement used.
+ */
+export async function getSettlementInfo(tradeId) {
+  return await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'get_settlement_info',
+    args: [tradeId],
+  })
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // P2P ESCROW — Write (require wallet client)
 // ══════════════════════════════════════════════════════════════════════════════

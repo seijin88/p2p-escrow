@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import {
-  getTrade, markPaid, releaseCrypto, openDispute,
+  getTrade, getSettlementInfo, markPaid, releaseCrypto, openDispute,
   escalateAfterTimeout, cancelExpiredOrder, arbitrate, waitForTransaction,
   appealVerdict, finalizeTrade,
 } from '../p2pClient.js'
@@ -27,6 +27,7 @@ async function uploadToIPFS(file) {
 export default function TradeDetail({ tradeId, onBack, onSettled }) {
   const { address, walletClient } = useWallet()
   const [trade, setTrade]         = useState(null)
+  const [settlement, setSettlement] = useState(null)
   const [loading, setLoading]     = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [txStatus, setTxStatus]   = useState('')
@@ -41,6 +42,9 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
     try {
       const t = await getTrade(tradeId)
       setTrade(t)
+      getSettlementInfo(tradeId)
+        .then((s) => setSettlement(s))
+        .catch(() => {})
       if (t?.status === 'settled') onSettled?.()
     } catch { /* silent */ }
     finally { setLoading(false) }
@@ -156,6 +160,19 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
           <span><span className="label">Rate </span>{Number(trade.rate).toLocaleString()} {trade.fiat_currency}/{trade.token}</span>
           <span><span className="label">Payment </span>{trade.payment_methods}</span>
         </div>
+        {settlement && Number(settlement.market_rate_at_lock) > 0 && (
+          <div className="ts-meta">
+            <span><span className="label">Market at lock </span>
+              {settlement.market_rate_at_lock.toLocaleString()} {trade.fiat_currency}/{trade.token}
+            </span>
+            <span><span className="label">Deviation </span>
+              {settlement.deviation_pct}%
+              {settlement.rate_within_limit
+                ? ' (within ±10%)'
+                : ' (degraded: oracle unavailable, quoted rate used)'}
+            </span>
+          </div>
+        )}
       </div>
 
       {trade.status === 'active' && trade.payment_deadline > 0 && (

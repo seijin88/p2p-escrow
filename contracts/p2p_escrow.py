@@ -637,11 +637,15 @@ class P2PEscrow(gl.Contract):
             try:
                 vr = lr.calldata
                 lv = leader_fn()
-                # All six axes plus the final verdict must agree between leader and validator
+                # Every field that can affect the payout must agree between
+                # leader and validator: the six axes, the verdict, AND the
+                # three extracted recipient fields — the contract hashes those
+                # against the seller commitment to decide the recipient axis,
+                # so two different extractions can produce different verdicts.
+                # The reference decides the replay guard and a storage write,
+                # so it is compared normalised, not verbatim.
                 return (
                     vr.get("verdict")             == lv.get("verdict")
-                    # The reference decides the replay guard and a storage write,
-                    # so it must agree too — compared normalised, not verbatim.
                     and _normalise_tx_id(vr.get("tx_id"))    == _normalise_tx_id(lv.get("tx_id"))
                     and bool(vr.get("tx_id_found"))         == bool(lv.get("tx_id_found"))
                     and bool(vr.get("amount_matches"))       == bool(lv.get("amount_matches"))
@@ -649,6 +653,14 @@ class P2PEscrow(gl.Contract):
                     and bool(vr.get("recipient_matches"))    == bool(lv.get("recipient_matches"))
                     and bool(vr.get("payment_method_valid")) == bool(lv.get("payment_method_valid"))
                     and bool(vr.get("date_in_window"))       == bool(lv.get("date_in_window"))
+                    # recipient fields feed the on-chain commitment hash —
+                    # they can flip the verdict, so they must agree too
+                    and str(vr.get("recipient_bank", "") or "").strip()
+                        == str(lv.get("recipient_bank", "") or "").strip()
+                    and str(vr.get("recipient_account", "") or "").strip()
+                        == str(lv.get("recipient_account", "") or "").strip()
+                    and str(vr.get("recipient_name", "") or "").strip()
+                        == str(lv.get("recipient_name", "") or "").strip()
                 )
             except Exception:
                 return False
@@ -821,4 +833,47 @@ class P2PEscrow(gl.Contract):
             "total_offers": str(self.offer_counter),
             "total_trades": str(self.trade_counter),
             "open_offers" : n_open,
+        }
+
+    @gl.public.view
+    def get_settlement_info(self, trade_id: u256) -> typing.Any:
+        """Full settlement view for frontends and trade detail pages.
+
+        Exposes three rates in human-readable units so the displayed rate
+        always matches what the contract used for settlement:
+
+        - quoted_rate            : rate the seller quoted at offer creation
+                                    (the price the buyer agreed to pay)
+        - market_rate_at_lock    : market price at the moment the buyer locked
+                                    the order, in <fiat> per 1 <token>
+        - deviation_pct          : |quoted - market| / market as a percentage
+                                    (the guard that enforced or waived the trade)
+
+        All three are stored atomically at lock time.  If the oracle was
+        unavailable the market rate mirrors the quoted rate (graceful
+        degradation, 0 % deviation).
+        """
+        t = self._load_trade(trade_id)
+        if not t:
+            return {}
+
+        market_micro = int(t.get("market_price_micro_at_lock", 0))
+        quoted_rate  = float(t.get("rate", "0"))
+        market_rate  = market_micro / float(PRICE_SCALE)
+        deviation    = int(t.get("rate_deviation_pct", 0))
+        locked       = int(t.get("created_at", 0))
+
+        return {
+            "trade_id"             : t.get("trade_id"),
+            "status"              : t.get("status"),
+            "verdict"             : t.get("verdict", ""),
+            "fiat_currency"       : t.get("fiat_currency", ""),
+            "fiat_amount"         : t.get("fiat_amount", ""),
+            "crypto_amount"       : t.get("crypto_amount", ""),
+            "quoted_rate"         : quoted_rate,
+            "market_rate_at_lock" : market_rate,
+            "deviation_pct"       : deviation,
+            "rate_within_limit"   : deviation <= MAX_RATE_DEV_PCT,
+            "locked_at_unix"      : locked,
+            "rate_scale"          : "per 1 GEN",
         }

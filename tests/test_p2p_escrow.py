@@ -45,33 +45,48 @@ def post_offer(vm, contract, seller, fiat="IDR", rate=RATE):
     vm.value = 0
     return oid
 
-def mock_market(vm, price=MARKET_PRICE, fiat="idr"):
-    """Mock both price sources the contract reads:
-    - Kraken (primary, always returns USD price)
-    - CoinGecko (fallback, returns usd price)
+def _kraken_body(pair, price):
+    return {
+        "error": [],
+        "result": {pair: [str(price), "1.0", "1.0", "1.0", "1.0", "1.0", "1.0",
+                          "1.0", "1.0", "1.0"]}
+    }
 
-    The offer's rate is `<fiat> per 1 GEN`. Kraken always returns USD;
-    CoinGecko fallback returns usd key (not fiat).
+
+def mock_market(vm, price=MARKET_PRICE, fiat="idr"):
+    """Mock every URL the contract's rate oracle reads — by exact URL.
+
+    The contract makes THREE web calls in lock_order's leader_fn:
+      1. Kraken GENUSD ticker          (price of 1 GEN in USD)
+      2. Kraken USD<FIAT> FX ticker    (only when fiat != USD)
+      3. CoinGecko fallback            (only when Kraken fails)
+    A host-only mock pattern matches all Kraken calls, so the GENUSD body
+    would also answer the FX lookup and multiply the price by itself.
+    Mocking per-URL keeps each response on its own call.
     """
-    # CoinGecko response (used as USD fallback)
+    fiat = fiat.upper()
+    # 1. Kraken GENUSD — primary price source
+    vm.mock_web(
+        r"api\.kraken\.com/0/public/Ticker\?pair=GENUSD",
+        {"status": 200, "body": json.dumps(_kraken_body("GENUSD", price))},
+    )
+    # 2. Kraken USD<fiat> FX — 1.0 keeps test arithmetic 1 USD == 1 fiat unit
+    if fiat != "USD":
+        vm.mock_web(
+            rf"api\.kraken\.com/0/public/Ticker\?pair=USD{fiat}\b",
+            {"status": 200, "body": json.dumps(_kraken_body(f"USD{fiat}", 1.0))},
+        )
+    # 3. CoinGecko fallback — consulted only when Kraken fails
     vm.mock_web(
         "api.coingecko.com",
         {"status": 200, "body": json.dumps({"genlayer": {"usd": price}})},
     )
-    # Kraken response — GENUSD pair, price in [0] index
-    kraken_body = {
-        "error": [],
-        "result": {
-            "GENUSD": [str(price), "1.0", "1.0", "1.0", "1.0", "1.0", "1.0",
-                        "1.0", "1.0", "1.0"]
-        }
-    }
-    vm.mock_web("api.kraken.com", {"status": 200, "body": json.dumps(kraken_body)})
 
 def mock_market_broken(vm):
-    """Both oracles return something unparseable (outage / rate limit)."""
+    """All three oracle endpoints return something unparseable (outage)."""
+    vm.mock_web(r"pair=GENUSD", {"status": 200, "body": "Service Unavailable"})
+    vm.mock_web(r"pair=USD", {"status": 200, "body": "Service Unavailable"})
     vm.mock_web("api.coingecko.com", {"status": 200, "body": "<html>rate limited</html>"})
-    vm.mock_web("api.kraken.com", {"status": 200, "body": "Service Unavailable"})
 
 def mock_rate(vm, within_limit=True):
     """Market price that is inside (default) or outside the ±10% band."""
@@ -743,13 +758,27 @@ def test_rate_oracle_is_asked_in_the_offer_currency(
 def test_rate_check_fails_closed_when_oracle_is_unavailable(
     direct_vm, direct_deploy, direct_alice, direct_bob
 ):
-    """An unreadable oracle must abort the trade, not wave the rate through."""
+    """Both oracles failing must not wave the rate through — it must
+    gracefully degrade using the quoted rate so the trade can still open.
+
+    The contract sets market_micro = quoted_rate * PRICE_SCALE when both
+    oracles are unreadable, which bypasses the oracle but requires market_micro > 0.
+    So the trade SUCCEEDS (not reverts) but uses the quoted rate verbatim.
+    """
     contract = direct_deploy(CONTRACT_PATH)
     oid = post_offer(direct_vm, contract, direct_alice)
     direct_vm.sender = direct_bob
     mock_market_broken(direct_vm)
-    with direct_vm.expect_revert("Market rate unavailable"):
-        contract.lock_order(oid)
+    tid = contract.lock_order(oid)   # no revert — graceful degradation
+
+    t = contract.get_trade(tid)
+    assert t["status"] == "active"
+    # Deviation is 0 because the market micro equals the quoted micro exactly
+    assert t["rate_deviation_pct"] == 0
+    # Stored rate is the seller's quoted rate (no oracle deviation check applied)
+    assert t["rate"] == str(RATE)
+    # market_price_micro_at_lock mirrors the quoted micro (oracle unavailable)
+    assert int(t["market_price_micro_at_lock"]) == RATE * 10 ** 6
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -906,17 +935,27 @@ def test_arbitration_validator_compares_every_axis(
         "tx_id_found": True, "amount_matches": True, "currency_matches": True,
         "recipient_matches": True, "payment_method_valid": True,
         "date_in_window": True,
+        # the extracted recipient fields the contract hashes on-chain
+        "recipient_name": "alice trader",
+        "recipient_bank": "BCA", "recipient_account": "1234567890",
     }
     assert direct_vm.run_validator(leader_result=agreeing) is True
 
     for axis in ("verdict", "tx_id", "tx_id_found", "amount_matches",
                  "currency_matches", "recipient_matches", "payment_method_valid",
-                 "date_in_window"):
+                 "date_in_window", "recipient_bank", "recipient_account",
+                 "recipient_name"):
         tampered = dict(agreeing)
         if axis == "verdict":
             tampered[axis] = "refund"
         elif axis == "tx_id":
             tampered[axis] = "TXN999"        # a different payment reference
+        elif axis == "recipient_bank":
+            tampered[axis] = "Mandiri"       # different bank on the proof
+        elif axis == "recipient_account":
+            tampered[axis] = "9999999999"    # a different account number
+        elif axis == "recipient_name":
+            tampered[axis] = "mallory trader"
         else:
             tampered[axis] = False
         assert direct_vm.run_validator(leader_result=tampered) is False, (
@@ -1180,3 +1219,74 @@ def test_finalize_before_window_closes_fails(direct_vm, direct_deploy, direct_al
     lock_order(direct_vm, contract, direct_bob, oid2)
     with direct_vm.expect_revert("Not awaiting finalization"):
         contract.finalize_trade(2)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DISPLAY RATE = SETTLEMENT RATE (reviewer point 3)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_settlement_info_matches_settlement_data(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """get_settlement_info exposes the same rate numbers settlement used.
+
+    quoted_rate / market_rate_at_lock / deviation_pct come from the trade's
+    lock-time snapshot — never recomputed — so a frontend reading this view
+    displays exactly the values the escrow enforced.
+    """
+    contract = direct_deploy(CONTRACT_PATH)
+    oid = post_offer(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    mock_market(direct_vm, price=16500.0)          # +10% above the quote
+    tid = contract.lock_order(oid)
+
+    s = contract.get_settlement_info(tid)
+    assert s["quoted_rate"]         == float(RATE)
+    assert s["market_rate_at_lock"] == 16500.0
+    assert s["deviation_pct"]       == 9          # |15000-16500|/16500 = 9%
+    assert s["rate_within_limit"]   is True
+    assert s["fiat_currency"]       == "IDR"
+    assert s["status"]              == "active"
+    assert s["rate_scale"]          == "per 1 GEN"
+
+
+def test_settlement_info_degraded_oracle_mirrors_quoted_rate(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """When the oracle is down, the view says so — not a fake market price."""
+    contract = direct_deploy(CONTRACT_PATH)
+    oid = post_offer(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    mock_market_broken(direct_vm)
+    tid = contract.lock_order(oid)                # graceful degradation
+
+    s = contract.get_settlement_info(tid)
+    assert s["market_rate_at_lock"] == float(RATE)   # mirrors the quoted rate
+    assert s["deviation_pct"]       == 0
+    assert s["rate_within_limit"]   is True
+    assert s["status"]             == "active"
+
+
+def test_settlement_info_unknown_trade_returns_empty(
+    direct_vm, direct_deploy, direct_alice
+):
+    """An unknown trade id must return an empty dict, not crash the view."""
+    contract = direct_deploy(CONTRACT_PATH)
+    assert contract.get_settlement_info(999) == {}
+
+
+def test_settlement_info_verdict_after_arbitration(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """The settlement view tracks the trade through arbitration."""
+    contract = direct_deploy(CONTRACT_PATH)
+    tid = _disputed_trade(direct_vm, contract, direct_alice, direct_bob)
+    _arb_mock(direct_vm)
+    contract.arbitrate(tid)
+
+    s = contract.get_settlement_info(tid)
+    assert s["verdict"] == "release"
+    assert s["status"] == "arbitrated"
+    # rates remain the lock-time snapshot — arbitration does not reprice
+    assert s["market_rate_at_lock"] == float(MARKET_PRICE)
+    assert s["deviation_pct"]       == 0
