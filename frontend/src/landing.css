@@ -1,17 +1,5 @@
-/* override warm-charcoal with true terminal black for landing only */
-.landing {
-  background: #0b0d11;
-  min-height: 100vh;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 32px 16px; gap: 28px;
-}
-.landing .terminal-window {
-  border-color: #2a2f3a;
-  box-shadow: 0 8px 40px rgba(0,0,0,.7);
-}
-.landing .feat { background: #161a1f; border-color: #2a2f3a; }
-.landing .btn-primary { background: #6e8efb; }
+/* Landing inherits the unified terminal palette from styles.css */
+.landing { background: var(--bg-base); }
 .terminal-window {
   width: 100%; max-width: 720px;
   background: #0b0d11;

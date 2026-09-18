@@ -1,46 +1,47 @@
 /* ============================================================================
-   P2P Escrow — Global Styles
-   Refactored: warm minimal + monospace amounts + SVG-free
+   P2P Escrow — Unified Terminal Aesthetic
+   Single design language: terminal/code, monospace-first, dark
    ============================================================================ */
 
 /* ── Fonts ── */
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Palette: warm charcoal + indigo accent + monospace amounts */
-  --bg-base:        #111318;   /* warm charcoal, not GitHub dark */
-  --bg-surface:     #1a1d24;   /* lifted surface */
-  --bg-card:        #20242c;   /* card fill */
-  --bg-hover:       #272b35;   /* hover state */
-  --border:         #2e323f;   /* softer border */
-  --border-bright:  #3d4254;   /* active/hover border */
-  --text-primary:   #e8eaf0;   /* warm white */
-  --text-secondary: #9096a8;   /* muted */
-  --text-muted:     #555d74;   /* very muted */
-  --accent:        #6e8efb;   /* indigo — trusty, calm, not blue-purple gradient */
-  --accent-dim:     rgba(110,142,251,.12);
-  --green:          #5ec97a;   /* settled/success */
-  --green-dim:      rgba(94,201,122,.12);
-  --yellow:         #e8b94d;   /* warning/pending */
-  --yellow-dim:     rgba(232,185,77,.12);
-  --red:            #e05c5c;   /* error/dispute */
-  --red-dim:        rgba(224,92,92,.12);
-  --purple:         #b68efb;   /* arbiter/AI */
-  --purple-dim:     rgba(182,142,251,.1);
-  --orange:         #e89b5c;   /* fiat amount accent */
-  /* Typography */
-  --font: 'Nunito Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
-  /* Radius: deliberate variation — not all pill */
-  --r-sm:  6px;
-  --r:     10px;
-  --r-lg:  16px;
-  --r-xl:  22px;
-  /* Shadows: subtle, warm */
-  --shadow: 0 1px 4px rgba(0,0,0,.35);
-  --shadow-lg: 0 4px 20px rgba(0,0,0,.5);
+  /* Terminal dark palette — unified across landing + marketplace */
+  --bg-base:        #0b0d11;   /* true terminal black */
+  --bg-surface:     #13161c;   /* slightly lifted */
+  --bg-card:        #1a1e25;   /* card fill */
+  --bg-hover:       #21252f;   /* hover state */
+  --border:         #272d38;   /* panel border */
+  --border-bright:  #3a4255;   /* active border */
+  --text-primary:   #d4dae8;   /* main text */
+  --text-secondary: #7a849a;   /* muted text */
+  --text-muted:     #444d5e;   /* very muted */
+  --accent:        #6e8efb;   /* indigo — links, selected */
+  --accent-dim:     rgba(110,142,251,.1);
+  --green:          #4ade80;   /* terminal green — success, prompts, logo */
+  --green-dim:      rgba(74,222,128,.1);
+  --yellow:         #fbbf24;   /* warning */
+  --yellow-dim:     rgba(251,191,36,.1);
+  --red:            #f87171;   /* error */
+  --red-dim:        rgba(248,113,113,.1);
+  --purple:         #a78bfa;   /* AI / arbiter */
+  --purple-dim:     rgba(167,139,250,.1);
+  --orange:         #fb923c;   /* fiat amount */
+  /* Typography — monospace primary */
+  --font: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-ui:  'Nunito Sans', -apple-system, sans-serif; /* for prose only */
+  /* Radius — sharp terminal feel, minimal rounding */
+  --r-sm:  3px;
+  --r:     5px;
+  --r-lg:  8px;
+  --r-xl:  12px;
+  /* Shadows */
+  --shadow: 0 1px 3px rgba(0,0,0,.5);
+  --shadow-lg: 0 4px 20px rgba(0,0,0,.6);
 }
 
 body {
@@ -48,7 +49,7 @@ body {
   background: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.65;
-  min-height: 100vh;
+  font-size: 13px; /* monospace default smaller */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -74,14 +75,14 @@ body {
 }
 .logo-area { display: flex; align-items: center; gap: 11px; flex-shrink: 0; cursor: pointer; }
 .logo-mark, .logo-icon {
-  width: 34px; height: 34px; border-radius: var(--r);
-  background: var(--accent);
+  width: 30px; height: 30px; border-radius: var(--r);
+  background: var(--green-dim); border: 1px solid rgba(74,222,128,.3);
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-weight: 700; font-size: 1rem;
-  color: #fff; letter-spacing: -.5px; flex-shrink: 0;
+  font-family: var(--font-mono); font-weight: 700; font-size: 13px;
+  color: var(--green); letter-spacing: -.5px; flex-shrink: 0;
 }
-.app-title { font-size: 1.15rem; font-weight: 800; line-height: 1.2; letter-spacing: -.02em; }
-.app-subtitle { font-size: 0.72rem; color: var(--text-secondary); font-family: var(--font-mono); letter-spacing: .02em; }
+.app-title { font-size: 14px; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; font-family: var(--font-mono); }
+.app-subtitle { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); letter-spacing: .02em; }
 
 .main-nav { display: flex; gap: 2px; flex: 1; }
 .nav-btn {
@@ -461,7 +462,8 @@ body {
 .app-footer {
   text-align: center; padding: 24px 0 0;
   border-top: 1px solid var(--border); margin-top: 32px;
-  color: var(--text-muted); font-size: 0.78rem;
+  color: var(--text-muted); font-size: 11px;
+  font-family: var(--font-mono);
 }
 .app-footer a { color: var(--accent); text-decoration: none; }
 

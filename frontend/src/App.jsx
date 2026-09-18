@@ -73,10 +73,10 @@ export default function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="logo-area" onClick={() => setView('board')} style={{cursor:'pointer'}}>
-            <span className="logo-icon" aria-hidden="true">◈</span>
+            <span className="logo-icon" aria-hidden="true">$</span>
             <div>
-              <h1 className="app-title">P2P Escrow</h1>
-              <p className="app-subtitle">Crypto to Fiat via GenLayer AI</p>
+              <h1 className="app-title">P2P ESCROW<span className="t-prompt">@</span>bradbury</h1>
+              <p className="app-subtitle">escrow.v1 · AI arbitrated · GenLayer</p>
             </div>
           </div>
           <nav className="main-nav">
