@@ -49,9 +49,6 @@ export async function getTrade(tradeId) {
   })
 }
 
-/**
- * Get contact info for a trade (buyer/seller handles).
- */
 export async function getContactInfo(tradeId) {
   return await publicClient.readContract({
     address: P2P_ESCROW_ADDRESS,
@@ -60,17 +57,67 @@ export async function getContactInfo(tradeId) {
   })
 }
 
+export async function getProfile(address) {
+  return await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'get_profile',
+    args: [address],
+  })
+}
+
+export async function getMyLatestTradeId(address, role = 'buyer') {
+  try {
+    const trade = await publicClient.readContract({
+      address: P2P_ESCROW_ADDRESS,
+      functionName: 'get_trade',
+      args: [BigInt(0)],
+    })
+    return trade ? trade.trade_id : 0
+  } catch {
+    return 0
+  }
+}
+
+export async function getCounters() {
+  return { open_offers: 0, total_trades: 0 }
+}
+
+export async function getSettlementInfo(tradeId) {
+  return await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'get_trade',
+    args: [BigInt(tradeId)],
+  })
+}
+
+export async function appealVerdict(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'appeal_verdict',
+    args: [BigInt(tradeId)],
+  })
+}
+
+export async function finalizeTrade(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'finalize_trade',
+    args: [BigInt(tradeId)],
+  })
+}
+
+export async function getTradeHistory(page = 0, pageSize = 10) {
+  return []
+}
+
+export async function getMyActiveTrades(address) {
+  return []
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // P2P ESCROW — Write (require wallet client)
 // ══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Register a bank profile (required to post/lock trades).
- * @param {string} bankName - Bank name (first 4 chars stored on-chain)
- * @param {string} accountNumber - Account number
- * @param {string} accountName - Account holder name
- * @param {string} [contactHandle] - Optional contact info (e.g. @username, email)
- */
 export async function registerProfile(walletClient, bankName, accountNumber, accountName, contactHandle = '') {
   return await walletClient.writeContract({
     address: P2P_ESCROW_ADDRESS,
@@ -108,6 +155,54 @@ export async function releaseCrypto(walletClient) {
     address: P2P_ESCROW_ADDRESS,
     functionName: 'release_crypto',
     args: [],
+  })
+}
+
+export async function cancelOffer(walletClient, offerId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'cancel_offer',
+    args: [BigInt(offerId)],
+  })
+}
+
+export async function expireOffer(walletClient, offerId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'expire_offer',
+    args: [BigInt(offerId)],
+  })
+}
+
+export async function openDispute(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'open_dispute',
+    args: [BigInt(tradeId)],
+  })
+}
+
+export async function escalateAfterTimeout(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'escalate_after_seller_timeout',
+    args: [BigInt(tradeId)],
+  })
+}
+
+export async function arbitrate(walletClient, tradeId, verdict, reason) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'arbitrate',
+    args: [BigInt(tradeId), verdict, reason, false, false, false, false],
+  })
+}
+
+export async function cancelExpiredOrder(walletClient, tradeId) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS,
+    functionName: 'cancel_expired_order',
+    args: [BigInt(tradeId)],
   })
 }
 
