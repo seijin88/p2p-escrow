@@ -7,7 +7,9 @@ const BANKS = ['BCA', 'BNI', 'BRI', 'Mandiri', 'CIMB', 'Danamon', 'Permata', 'Go
 
 export default function RegisterForm({ onRegistered }) {
   const { walletClient, address } = useWallet()
-  const [form, setForm] = useState({ bankName: '', accountNumber: '', accountName: '' })
+  const [form, setForm] = useState({
+    bankName: '', accountNumber: '', accountName: '', contactHandle: ''
+  })
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -19,23 +21,25 @@ export default function RegisterForm({ onRegistered }) {
     if (!walletClient || !address) return setError('Connect wallet first')
     setError(''); setStatus(''); setLoading(true)
     try {
-      setStatus('Reporting your bank account to the escrow…')
+      setStatus('Reporting profile & contact info...')
       const hash = await reportProfile(walletClient, {
-        bankName      : form.bankName,
-        accountNumber : form.accountNumber,
-        accountName   : form.accountName,
+        bankName: form.bankName,
+        accountNumber: form.accountNumber,
+        accountName: form.accountName,
+        contactHandle: form.contactHandle,
       })
-      setStatus('Waiting for confirmation… (this may take 1-2 minutes)')
+      setStatus('Waiting for confirmation... (this may take 1-2 minutes)')
       try {
-        await waitForTransaction(hash, 5000, 60) // 5s interval, 60 attempts = 5 min
+        await waitForTransaction(hash, 5000, 60)
       } catch {
-        // Transaction may already be accepted even if polling timed out
+        // May already be accepted even if polling timed out
       }
       setStatus('Profile reported!')
       setTimeout(() => onRegistered?.({
         bank_name: form.bankName,
         account_number: form.accountNumber,
         account_name: form.accountName,
+        contact_handle: form.contactHandle,
       }), 1200)
     } catch (err) {
       setError(err.message || 'Transaction failed')
@@ -52,8 +56,8 @@ export default function RegisterForm({ onRegistered }) {
           <div>
             <h2 className="register-title">Report Bank Account</h2>
             <p className="register-desc">
-              Required before trading. Your bank details are reported to the escrow
-              contract itself and used by the AI arbiter to verify payment proofs.
+              Required before trading. Your bank details & contact info are reported to the escrow
+              contract and used by the AI arbiter to verify payment proofs.
             </p>
           </div>
         </div>
@@ -62,7 +66,7 @@ export default function RegisterForm({ onRegistered }) {
           <strong>Why is this required?</strong>
           <ul>
             <li>The escrow refuses any offer or lock from an address with no reported profile</li>
-            <li>Sellers: buyers see your account number automatically — no manual sharing</li>
+            <li>Sellers: buyers can contact you via Telegram/Email (optional)</li>
             <li>AI arbiter uses your reported name to match payment receipts</li>
           </ul>
         </div>
@@ -76,7 +80,7 @@ export default function RegisterForm({ onRegistered }) {
               onChange={e => set('bankName', e.target.value)}
               required
             >
-              <option value="">Select bank…</option>
+              <option value="">Select bank...</option>
               {BANKS.map(b => <option key={b}>{b}</option>)}
               <option value="Other">Other</option>
             </select>
@@ -107,8 +111,20 @@ export default function RegisterForm({ onRegistered }) {
             <span className="hint">Must match exactly — AI verifies this against payment proof</span>
           </div>
 
+          <div className="form-group">
+            <label>Contact Handle (Optional)</label>
+            <input
+              className="input"
+              type="text"
+              placeholder="@username (Telegram) or email@example.com"
+              value={form.contactHandle}
+              onChange={e => set('contactHandle', e.target.value)}
+            />
+            <span className="hint">Buyers can contact you directly via Telegram or Email</span>
+          </div>
+
           <button className="btn btn-primary w-full" type="submit" disabled={loading || !address}>
-            {loading ? 'Reporting…' : 'Report & Continue'}
+            {loading ? 'Reporting...' : 'Report & Continue'}
           </button>
         </form>
 
