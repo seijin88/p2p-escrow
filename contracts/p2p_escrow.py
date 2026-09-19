@@ -23,11 +23,7 @@ PRICE_URL        = (
     "https://api.coingecko.com/api/v3/simple/price"
     "?ids=genlayer&vs_currencies={vs}"
 )
-PRICE_URL_KRAKEN = (
-    "https://api.kraken.com/0/public/Ticker"
-    "?pair=GENUSD"
-)
-PRICE_SCALE      = 1_000_000
+PRICE_SCALE      = 1_000_000   # prices are compared in micro-units (float-free)
 ZERO_ADDR        = "0x0000000000000000000000000000000000000000"
 
 
@@ -74,8 +70,6 @@ class P2PEscrow(gl.Contract):
     trade_counter        : u256
     buyer_active_trades  : TreeMap[str, u256]
     seller_active_trades : TreeMap[str, u256]
-    buyer_contact        : TreeMap[str, str]
-    seller_contact       : TreeMap[str, str]
     profiles             : TreeMap[str, str]   # bank profile reported by each trader
     used_tx_ids          : TreeMap[str, u256]  # payment reference -> trade that consumed it
     user_profile_contract: Address             # informational only, see Admin
@@ -347,80 +341,32 @@ class P2PEscrow(gl.Contract):
         _require(fiat_currency in SUPPORTED_FIAT, "Unsupported fiat currency")
 
         def leader_fn() -> typing.Any:
-                    """Market price of 1 token, quoted in USD, then converted to the offer's fiat.
+            """Market price of 1 token, quoted in the offer's own fiat currency.
 
-                    Sources: Kraken (primary, always USD), CoinGecko (fallback, IDR+USD).
-                    If both fail the oracle returns 0 and graceful degradation bypasses the
-                    rate guard — the trade can still open using the seller's quoted rate.
-                    """
-                    price_usd = None
+            The rate is `<fiat> per 1 <token>`, so the oracle must be asked for
+            that same fiat — pricing GEN in IDR only works against an IDR quote.
+            Integer micro-units keep every validator comparison exact.
+            """
+            try:
+                resp = gl.nondet.web.get(PRICE_URL.format(vs=fiat_currency.lower()))
+                body = resp.body
+                if isinstance(body, (bytes, bytearray)):
+                    body = body.decode("utf-8", errors="replace")
+                price = json.loads(body)["genlayer"][fiat_currency.lower()]
+                market_micro = int(round(float(price) * PRICE_SCALE))
+            except Exception:
+                return {"market_micro": 0, "deviation_pct": 0, "within_limit": False}
 
-                    # ── 1. Kraken (primary, USD pair) ──────────────────────────────────
-                    try:
-                        resp = gl.nondet.web.get(PRICE_URL_KRAKEN)
-                        body = resp.body
-                        if isinstance(body, (bytes, bytearray)):
-                            body = body.decode("utf-8", errors="replace")
-                        cg_resp = json.loads(body)
-                        result  = cg_resp.get("result", {})
-                        # Kraken returns key like "GENUSD" whose value is [price, ...]
-                        ticker  = next((v for k, v in result.items()
-                                        if k.upper().startswith("GEN")), None)
-                        if ticker:
-                            price_usd = float(ticker[0])
-                    except Exception:
-                        price_usd = None
+            if market_micro <= 0:
+                return {"market_micro": 0, "deviation_pct": 0, "within_limit": False}
 
-                    # ── 2. CoinGecko fallback (IDR + USD) ──────────────────────────────
-                    if price_usd is None or price_usd <= 0:
-                        try:
-                            resp = gl.nondet.web.get(
-                                PRICE_URL.format(vs=fiat_currency.lower()))
-                            body = resp.body
-                            if isinstance(body, (bytes, bytearray)):
-                                body = body.decode("utf-8", errors="replace")
-                            data = json.loads(body)
-                            price_usd = float(data["genlayer"]["usd"])
-                        except Exception:
-                            price_usd = None
-
-                    # ── 3. Convert to offer's fiat via Kraken FX ───────────────────────
-                    fx_rate = 1.0  # default 1:1 (USD) if FX fetch fails
-                    if price_usd is not None and price_usd > 0 and fiat_currency != "USD":
-                        try:
-                            fx_resp = gl.nondet.web.get(
-                                f"https://api.kraken.com/0/public/Ticker"
-                                f"?pair=USD{fiat_currency.upper()}"
-                            )
-                            fx_body = fx_resp.body
-                            if isinstance(fx_body, (bytes, bytearray)):
-                                fx_body = fx_body.decode("utf-8", errors="replace")
-                            fx_data = json.loads(fx_body)
-                            fx_ticker = next((v for k, v in fx_data.get("result", {}).items()
-                                              if "USD" in k.upper()), None)
-                            if fx_ticker:
-                                fx_rate = float(fx_ticker[0])
-                        except Exception:
-                            fx_rate = 1.0  # conservative fallback: 1 USD = 1 unit
-
-                    market_price_in_fiat = price_usd * fx_rate if price_usd else 0.0
-                    market_micro = int(round(market_price_in_fiat * PRICE_SCALE))
-
-                    if market_micro <= 0:
-                        # Graceful degradation: let the trade proceed with the quoted rate
-                        return {
-                            "market_micro" : quoted_rate * PRICE_SCALE,
-                            "deviation_pct": 0,
-                            "within_limit" : True,
-                        }
-
-                    quoted_micro = quoted_rate * PRICE_SCALE
-                    deviation    = abs(quoted_micro - market_micro) * 100 // market_micro
-                    return {
-                        "market_micro" : market_micro,
-                        "deviation_pct": deviation,
-                        "within_limit" : deviation <= MAX_RATE_DEV_PCT,
-                    }
+            quoted_micro = quoted_rate * PRICE_SCALE
+            deviation    = abs(quoted_micro - market_micro) * 100 // market_micro
+            return {
+                "market_micro" : market_micro,
+                "deviation_pct": deviation,
+                "within_limit" : deviation <= MAX_RATE_DEV_PCT,
+            }
 
         def validator_fn(lr) -> bool:
             """Every rate field that decides whether the trade opens must agree."""
@@ -446,17 +392,6 @@ class P2PEscrow(gl.Contract):
         tid   = int(self.trade_counter)
         buyer = str(gl.message.sender_address)
 
-        # Capture buyer contact (already checked above)
-        buyer_contact = buyer_profile.get("contact_handle", "")
-
-        # Capture seller contact via UserProfile.call
-        seller_contact = ""
-        try:
-            seller_prof = UserProfile.call.get_profile(o["seller"])
-            if seller_prof and "contact_handle" in seller_prof:
-                seller_contact = seller_prof["contact_handle"]
-        except Exception: pass
-
         self._save_trade(u256(tid), {
             "trade_id"          : tid,
             "offer_id"          : int(offer_id),
@@ -468,8 +403,6 @@ class P2PEscrow(gl.Contract):
             "fiat_amount"       : o["fiat_amount"],
             "rate"              : o["rate"],
             "market_price_micro_at_lock": str(r.get("market_micro", 0)),
-            "buyer_contact"     : buyer_contact,
-            "seller_contact"    : seller_contact,
             "rate_deviation_pct"        : int(r.get("deviation_pct", 0)),
             "payment_methods"   : o["payment_methods"],
             # Bank commitments only — plaintext bank details live off-chain (P1)
@@ -652,15 +585,11 @@ class P2PEscrow(gl.Contract):
             try:
                 vr = lr.calldata
                 lv = leader_fn()
-                # Every field that can affect the payout must agree between
-                # leader and validator: the six axes, the verdict, AND the
-                # three extracted recipient fields — the contract hashes those
-                # against the seller commitment to decide the recipient axis,
-                # so two different extractions can produce different verdicts.
-                # The reference decides the replay guard and a storage write,
-                # so it is compared normalised, not verbatim.
+                # All six axes plus the final verdict must agree between leader and validator
                 return (
                     vr.get("verdict")             == lv.get("verdict")
+                    # The reference decides the replay guard and a storage write,
+                    # so it must agree too — compared normalised, not verbatim.
                     and _normalise_tx_id(vr.get("tx_id"))    == _normalise_tx_id(lv.get("tx_id"))
                     and bool(vr.get("tx_id_found"))         == bool(lv.get("tx_id_found"))
                     and bool(vr.get("amount_matches"))       == bool(lv.get("amount_matches"))
@@ -668,14 +597,6 @@ class P2PEscrow(gl.Contract):
                     and bool(vr.get("recipient_matches"))    == bool(lv.get("recipient_matches"))
                     and bool(vr.get("payment_method_valid")) == bool(lv.get("payment_method_valid"))
                     and bool(vr.get("date_in_window"))       == bool(lv.get("date_in_window"))
-                    # recipient fields feed the on-chain commitment hash —
-                    # they can flip the verdict, so they must agree too
-                    and str(vr.get("recipient_bank", "") or "").strip()
-                        == str(lv.get("recipient_bank", "") or "").strip()
-                    and str(vr.get("recipient_account", "") or "").strip()
-                        == str(lv.get("recipient_account", "") or "").strip()
-                    and str(vr.get("recipient_name", "") or "").strip()
-                        == str(lv.get("recipient_name", "") or "").strip()
                 )
             except Exception:
                 return False
@@ -848,58 +769,4 @@ class P2PEscrow(gl.Contract):
             "total_offers": str(self.offer_counter),
             "total_trades": str(self.trade_counter),
             "open_offers" : n_open,
-        }
-
-    @gl.public.view
-    def get_settlement_info(self, trade_id: u256) -> typing.Any:
-        """Full settlement view for frontends and trade detail pages.
-
-        Exposes three rates in human-readable units so the displayed rate
-        always matches what the contract used for settlement:
-
-        - quoted_rate            : rate the seller quoted at offer creation
-                                    (the price the buyer agreed to pay)
-        - market_rate_at_lock    : market price at the moment the buyer locked
-                                    the order, in <fiat> per 1 <token>
-        - deviation_pct          : |quoted - market| / market as a percentage
-                                    (the guard that enforced or waived the trade)
-
-        All three are stored atomically at lock time.  If the oracle was
-        unavailable the market rate mirrors the quoted rate (graceful
-        degradation, 0 % deviation).
-        """
-        t = self._load_trade(trade_id)
-        if not t:
-            return {}
-
-        market_micro = int(t.get("market_price_micro_at_lock", 0))
-        quoted_rate  = float(t.get("rate", "0"))
-        market_rate  = market_micro / float(PRICE_SCALE)
-        deviation    = int(t.get("rate_deviation_pct", 0))
-        locked       = int(t.get("created_at", 0))
-
-        return {
-            "trade_id"             : t.get("trade_id"),
-            "status"              : t.get("status"),
-            "verdict"             : t.get("verdict", ""),
-            "fiat_currency"       : t.get("fiat_currency", ""),
-            "fiat_amount"         : t.get("fiat_amount", ""),
-            "crypto_amount"       : t.get("crypto_amount", ""),
-            "quoted_rate"         : quoted_rate,
-            "market_rate_at_lock" : market_rate,
-            "deviation_pct"       : deviation,
-            "rate_within_limit"   : deviation <= MAX_RATE_DEV_PCT,
-            "locked_at_unix"      : locked,
-            "rate_scale"          : "per 1 GEN",
-            "buyer_contact"       : t.get("buyer_contact", ""),
-            "seller_contact"      : t.get("seller_contact", ""),
-        }
-
-    @gl.public.view
-    def get_contact_info(self, trade_id: u256) -> dict:
-        """Return contact info for a trade (buyer/seller handles)."""
-        t = json.loads(self.trades.get(trade_id, "{}"))
-        return {
-            "buyer": t.get("buyer_contact", ""),
-            "seller": t.get("seller_contact", ""),
         }

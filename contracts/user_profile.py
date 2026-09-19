@@ -3,37 +3,18 @@ from genlayer import *
 import typing
 
 
-def _require(cond: bool, msg: str) -> None:
-    """Clean rollback with a user-facing message (see p2p_escrow._require)."""
-    if not cond:
-        raise gl.vm.UserError(msg)
-
-
 class UserProfile(gl.Contract):
     """
     On-chain bank account registry for P2P traders.
-    Only the contract owner may register or update entries — an attacker
-    cannot overwrite another trader's bank details by calling register()
-    as themselves.  Traders read back their own entry via get_profile().
+    Each address stores: bank_name|account_number|account_name
     """
 
-    bank_name     : TreeMap[str, str]
-    account_number: TreeMap[str, str]
-    account_name  : TreeMap[str, str]
-    contact_handle: TreeMap[str, str]
-    owner         : Address
+    bank_name      : TreeMap[str, str]
+    account_number : TreeMap[str, str]
+    account_name   : TreeMap[str, str]
 
     def __init__(self) -> None:
-        self.owner = gl.message.sender_address
-
-    def _addr_key(self, addr: str) -> str:
-        """Canonical storage key for an address (lowercase 0x-hex).
-
-        `str(Address)` renders EIP-55 mixed case, while callers (and the
-        escrow's own `_addr_key`) use lowercase hex — both must land on the
-        same TreeMap key or lookups silently miss.
-        """
-        return str(addr).lower()
+        pass
 
     @gl.public.write
     def register(
@@ -41,27 +22,23 @@ class UserProfile(gl.Contract):
         bank_name      : str,
         account_number : str,
         account_name   : str,
-        contact_handle : typing.Optional[str] = None,
     ) -> None:
-        _require(gl.message.sender_address == self.owner,
-                 "Only owner may register traders")
-        addr = str(gl.message.sender_address).lower()
+        addr = str(gl.message.sender_address)
         self.bank_name[addr]      = bank_name
         self.account_number[addr] = account_number
         self.account_name[addr]   = account_name
-        self.contact_handle[addr] = contact_handle if contact_handle is not None else ""
 
     @gl.public.view
     def get_profile(self, addr: str) -> typing.Any:
-        """Owner-readable: look up any trader's profile by address."""
-        _require(gl.message.sender_address == self.owner, "Only owner")
         try:
+            bn  = self.bank_name[addr]
+            an  = self.account_number[addr]
+            anm = self.account_name[addr]
             return {
                 "address"        : addr,
-                "bank_name"      : self.bank_name[addr],
-                "account_number": self.account_number[addr],
-                "account_name"  : self.account_name[addr],
-                "contact_handle": self.contact_handle.get(addr, ""),
+                "bank_name"      : bn,
+                "account_number" : an,
+                "account_name"   : anm,
             }
         except Exception:
             return None

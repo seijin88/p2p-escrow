@@ -32,10 +32,17 @@ export async function isProfileReported(address) {
 
 // ── Write ────────────────────────────────────────────────────────────────────
 
-export async function reportProfile(walletClient, { bankName, accountNumber, accountName }) {
+/**
+ * Register a bank profile (required to post/lock trades).
+ * @param {string} bankName - Bank name
+ * @param {string} accountNumber - Account number
+ * @param {string} accountName - Account holder name
+ * @param {string} [contactHandle] - Optional contact info (e.g. @username, email)
+ */
+export async function reportProfile(walletClient, { bankName, accountNumber, accountName, contactHandle = '' }) {
   return await walletClient.writeContract({
     address: P2P_ESCROW_ADDRESS,
-    functionName: 'report_profile',
-    args: [bankName, accountNumber, accountName],
+    functionName: 'register_profile',
+    args: [bankName, accountNumber, accountName, contactHandle],
   })
 }
