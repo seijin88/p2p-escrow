@@ -3,22 +3,8 @@ import { testnetBradbury } from 'genlayer-js/chains'
 
 const HEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/
 
-/**
- * Read a contract address from the build-time env, or refuse to start.
- */
-function requireAddress(name) {
-  const raw = import.meta.env[name]
-  const value = typeof raw === 'string' ? raw.trim() : ''
-  if (!HEX_ADDRESS.test(value)) {
-    throw new Error(
-      `${name} is ${raw === undefined ? 'not set' : `malformed ("${raw}")`}. ` +
-      `Expected 0x followed by 40 hex characters.`
-    )
-  }
-  return value
-}
-
-export const P2P_ESCROW_ADDRESS = requireAddress('VITE_P2P_ESCROW_ADDRESS')
+const P2P_ESCROW_ADDRESS_ENV = import.meta.env.VITE_P2P_ESCROW_ADDRESS || ''
+export const P2P_ESCROW_ADDRESS = P2P_ESCROW_ADDRESS_ENV.trim()
 
 // ── Public read-only client (no wallet needed) ────────────────────────────────
 export const publicClient = createClient({ chain: testnetBradbury })
