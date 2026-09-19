@@ -130,15 +130,7 @@ export async function postOffer(walletClient, { token, cryptoAmount, fiatCurrenc
   return await walletClient.writeContract({
     address: P2P_ESCROW_ADDRESS,
     functionName: 'post_offer',
-    args: [
-      token,
-      cryptoAmount,
-      fiatCurrency,
-      fiatAmount,
-      rate,
-      paymentMethods,
-      null, // expires_at (optional)
-    ],
+    args: [token, cryptoAmount, fiatCurrency, fiatAmount, rate, paymentMethods],
     value: BigInt(amountWei),
   })
 }
