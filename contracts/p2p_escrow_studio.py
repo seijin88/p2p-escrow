@@ -47,7 +47,7 @@ class P2PEscrow(gl.Contract):
         _require(fiat_currency in ['IDR', 'USD'], 'Unsupported fiat')
         _require(expires_at is None or expires_at > self._now(), 'Invalid expiry')
         try:
-            json.loads(self.profiles[str(gl.message.sender_address)])
+            self.profiles[str(gl.message.sender_address)]
         except Exception:
             raise Exception('Register profile first')
         offer_id = int(self.offer_counter)
