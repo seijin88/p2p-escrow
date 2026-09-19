@@ -5,7 +5,7 @@ This replicates what the GenLayer Studio does internally.
 Usage:
     py -3.12 scripts/deploy_to_bradbury.py
 """
-from genlayer import *
+import genlayer_py as gl
 from genlayer_py.accounts import create_account
 import sys
 

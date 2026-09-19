@@ -95,6 +95,7 @@ class P2PEscrow(gl.Contract):
         bank_name      : str,
         account_number : str,
         account_name   : str,
+        contact_handle : typing.Optional[str] = None,
     ) -> None:
         """Report (or update) the caller's bank profile. Mandatory before trading.
 
@@ -115,12 +116,17 @@ class P2PEscrow(gl.Contract):
             "Profile field too long",
         )
 
+        if contact_handle is None:
+            contact_handle = ""
+        _require(len(contact_handle) <= PROFILE_FIELD_MAX, "Contact handle too long")
+
         self.profiles[self._addr_key(gl.message.sender_address)] = json.dumps({
             "address"        : str(gl.message.sender_address),
             "commitment"     : hashlib.sha256(
                 "|".join([bank_name, account_number, account_name]).encode()
             ).hexdigest(),
             "bank_name_hint" : bank_name,
+            "contact_handle" : contact_handle,
             "reported_at"    : self._now(),
         })
 
@@ -391,6 +397,9 @@ class P2PEscrow(gl.Contract):
         self.trade_counter = self.trade_counter + u256(1)
         tid   = int(self.trade_counter)
         buyer = str(gl.message.sender_address)
+        seller_profile = self._load_profile(o["seller"]) or {}
+        buyer_contact = buyer_profile.get("contact_handle", "")
+        seller_contact = seller_profile.get("contact_handle", "")
 
         self._save_trade(u256(tid), {
             "trade_id"          : tid,
@@ -405,6 +414,8 @@ class P2PEscrow(gl.Contract):
             "market_price_micro_at_lock": str(r.get("market_micro", 0)),
             "rate_deviation_pct"        : int(r.get("deviation_pct", 0)),
             "payment_methods"   : o["payment_methods"],
+            "buyer_contact"     : buyer_contact,
+            "seller_contact"    : seller_contact,
             # Bank commitments only — plaintext bank details live off-chain (P1)
             "seller_bank_commitment": o.get("bank_commitment", ""),
             "buyer_bank_commitment" : buyer_profile.get("commitment", ""),

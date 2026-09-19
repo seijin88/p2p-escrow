@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import {
-  getTrade, getSettlementInfo, markPaid, releaseCrypto, openDispute,
-  escalateAfterTimeout, cancelExpiredOrder, arbitrate, waitForTransaction,
-  appealVerdict, finalizeTrade,
+  getTrade, getContactInfo, markPaid, releaseCrypto, openDispute,
+  waitForTransaction,
 } from '../p2pClient.js'
 
 const PINATA_JWT = import.meta.env.VITE_PINATA_JWT
@@ -193,6 +192,19 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
             <span className="label">Bank details</span>
             <strong>Private (P1)</strong>
           </div>
+          {trade.seller_contact && (
+            <div className="bank-info-row">
+              <span className="label">Contact</span>
+              <a
+                href={getContactLink(trade.seller_contact)}
+                target="_blank"
+                rel="noreferrer"
+                className="contact-link"
+              >
+                {trade.seller_contact}
+              </a>
+            </div>
+          )}
           <div className="bank-info-row"><span className="label">Commitment</span>
             <code className="bank-acct">{String(trade.seller_bank_commitment).slice(0, 18)}…</code>
           </div>
@@ -423,4 +435,12 @@ function formatDeadline(ts) {
   const m = Math.floor(diff / 60)
   const h = Math.floor(m / 60)
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`
+}
+
+function getContactLink(handle) {
+  if (!handle) return '#'
+  handle = handle.trim()
+  if (handle.startsWith('@')) return `https://t.me/${handle.slice(1)}`
+  if (handle.includes('@')) return `mailto:${handle}`
+  return '#'
 }
