@@ -74,6 +74,8 @@ class P2PEscrow(gl.Contract):
     trade_counter        : u256
     buyer_active_trades  : TreeMap[str, u256]
     seller_active_trades : TreeMap[str, u256]
+    buyer_contact        : TreeMap[str, str]
+    seller_contact       : TreeMap[str, str]
     profiles             : TreeMap[str, str]   # bank profile reported by each trader
     used_tx_ids          : TreeMap[str, u256]  # payment reference -> trade that consumed it
     user_profile_contract: Address             # informational only, see Admin
@@ -444,6 +446,17 @@ class P2PEscrow(gl.Contract):
         tid   = int(self.trade_counter)
         buyer = str(gl.message.sender_address)
 
+        # Capture buyer contact (already checked above)
+        buyer_contact = buyer_profile.get("contact_handle", "")
+
+        # Capture seller contact via UserProfile.call
+        seller_contact = ""
+        try:
+            seller_prof = UserProfile.call.get_profile(o["seller"])
+            if seller_prof and "contact_handle" in seller_prof:
+                seller_contact = seller_prof["contact_handle"]
+        except Exception: pass
+
         self._save_trade(u256(tid), {
             "trade_id"          : tid,
             "offer_id"          : int(offer_id),
@@ -455,6 +468,8 @@ class P2PEscrow(gl.Contract):
             "fiat_amount"       : o["fiat_amount"],
             "rate"              : o["rate"],
             "market_price_micro_at_lock": str(r.get("market_micro", 0)),
+            "buyer_contact"     : buyer_contact,
+            "seller_contact"    : seller_contact,
             "rate_deviation_pct"        : int(r.get("deviation_pct", 0)),
             "payment_methods"   : o["payment_methods"],
             # Bank commitments only — plaintext bank details live off-chain (P1)
@@ -876,4 +891,15 @@ class P2PEscrow(gl.Contract):
             "rate_within_limit"   : deviation <= MAX_RATE_DEV_PCT,
             "locked_at_unix"      : locked,
             "rate_scale"          : "per 1 GEN",
+            "buyer_contact"       : t.get("buyer_contact", ""),
+            "seller_contact"      : t.get("seller_contact", ""),
+        }
+
+    @gl.public.view
+    def get_contact_info(self, trade_id: u256) -> dict:
+        """Return contact info for a trade (buyer/seller handles)."""
+        t = json.loads(self.trades.get(trade_id, "{}"))
+        return {
+            "buyer": t.get("buyer_contact", ""),
+            "seller": t.get("seller_contact", ""),
         }
