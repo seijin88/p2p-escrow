@@ -3,7 +3,6 @@ from genlayer import *
 import json
 
 class P2PEscrow(gl.Contract):
-    """P2P escrow with contact info (P1)."""
     trades : TreeMap[u256, str]
     offers : TreeMap[u256, str]
     offer_counter : u256
