@@ -2,9 +2,6 @@ import React, { useState } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import { postOffer, waitForTransaction } from '../p2pClient.js'
 
-// Must mirror the contract's rule lists — the escrow only settles native GEN
-// (SUPPORTED_TOKENS) and only prices offers in fiats the oracle can quote
-// (SUPPORTED_FIAT). Anything else reverts on post_offer.
 const TOKENS = ['GEN']
 const FIATS  = ['IDR', 'USD']
 
@@ -25,15 +22,15 @@ export default function PostOfferForm({ onSuccess, onClose }) {
     if (!walletClient || !address) return setError('Connect wallet first')
     setError(''); setStatus(''); setLoading(true)
     try {
-      const amountWei = BigInt(Math.round(parseFloat(form.cryptoAmount) * 1e18)).toString()
       setStatus('Posting offer…')
       const hash = await postOffer(walletClient, {
         token: form.token,
+        cryptoAmount: form.cryptoAmount,
         fiatCurrency: form.fiatCurrency,
         fiatAmount: form.fiatAmount,
         rate: form.rate,
         paymentMethods: form.paymentMethods,
-        amountWei,
+        amountWei: BigInt(Math.round(parseFloat(form.cryptoAmount) * 1e18)),
       })
       setStatus('Waiting for confirmation…')
       await waitForTransaction(hash)
