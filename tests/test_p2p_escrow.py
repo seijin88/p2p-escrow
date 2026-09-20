@@ -8,7 +8,6 @@ def factory():
 
 def test_contract_file_validation(factory):
     """Test that the contract file can be loaded and validated."""
-    # Just getting the factory validates the contract file syntax and schema
     assert factory is not None
     print("Contract file loaded and validated successfully")
 
@@ -18,26 +17,30 @@ def test_01_deploy(factory):
     assert tx_execution_succeeded(receipt), "Deployment failed"
     print(f"Contract deployed at: {receipt.contract_address}")
 
-def test_02_register_profile(contract):
+def test_02_register_profile(factory):
     """Test profile registration."""
+    contract = factory.deploy()
     receipt = contract.register_profile(
         args=["Bank BCA", "User Name", "123456789012"]
     ).transact()
     assert tx_execution_succeeded(receipt), "Profile registration failed"
 
-def test_03_create_offer(contract):
+def test_03_create_offer(factory):
     """Test creating an offer."""
+    contract = factory.deploy()
     receipt = contract.create_offer(
         args=[1000000000000000000, 150000, "IDR"]
     ).transact()
     assert tx_execution_succeeded(receipt), "Create offer failed"
 
-def test_04_get_profile(contract):
+def test_04_get_profile(factory):
     """Test retrieving profile."""
+    contract = factory.deploy()
     result = contract.get_profile(args=[]).call()
     print(f"Profile: {result}")
 
-def test_05_get_offers(contract):
+def test_05_get_offers(factory):
     """Test retrieving offers."""
+    contract = factory.deploy()
     result = contract.get_offers(args=[]).call()
     print(f"Offers: {result}")

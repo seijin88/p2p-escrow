@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "types": "../../_types/tempo/MultisigOperation.d.ts",
+  "main": "../../_cjs/tempo/MultisigOperation.js",
+  "module": "../../_esm/tempo/MultisigOperation.js"
+}
