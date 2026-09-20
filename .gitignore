@@ -1,10 +1,49 @@
-node_modules/
-dist/
+# Environment files (private keys, credentials)
 .env
-*.local
+*.env
+env/
+
+# Gltest config with private keys
+gltest.config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test / artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/__pycache__/
+artifacts/
+
+# OS
 .DS_Store
 Thumbs.db
-__pycache__/
-*.pyc
-.pytest_cache/
-artifacts/

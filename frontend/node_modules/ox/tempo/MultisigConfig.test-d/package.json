@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "types": "../../_types/tempo/MultisigConfig.test-d.d.ts",
+  "main": "../../_cjs/tempo/MultisigConfig.test-d.js",
+  "module": "../../_esm/tempo/MultisigConfig.test-d.js"
+}

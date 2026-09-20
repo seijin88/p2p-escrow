@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "types": "../../_types/tempo/MultisigSimulation.test-d.d.ts",
+  "main": "../../_cjs/tempo/MultisigSimulation.test-d.js",
+  "module": "../../_esm/tempo/MultisigSimulation.test-d.js"
+}
