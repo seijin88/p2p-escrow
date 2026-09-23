@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import {
   getTrade, setProofUrl, releaseCrypto, forceRelease, arbitrateAI, getOwner,
-  waitForTransaction, fmt, shortAddr,
+  waitForTransaction, fmt, shortAddr, splitMethods, contactLink,
 } from '../p2pClient.js'
 import StatusBadge from './StatusBadge.jsx'
 import RutePeta from './RutePeta.jsx'
@@ -110,6 +110,8 @@ export default function TradeDetail({ tradeId, onBack }) {
   const isOwner = owner && address?.toLowerCase() === String(owner).toLowerCase()
   const selesai = ['released', 'refunded'].includes(trade.status)
   const tahap = tahapOf(trade)
+  const pecah = splitMethods(trade.payment_methods)
+  const linkKontak = contactLink(pecah.contact)
 
   return (
     <div className="nota">
@@ -143,7 +145,12 @@ export default function TradeDetail({ tradeId, onBack }) {
         <div className="karcis-perforasi" aria-hidden="true" />
         <dl className="karcis-meta">
           <div><dt>Kurs</dt><dd>Rp{Number(trade.rate).toLocaleString('id-ID')} / {trade.token}</dd></div>
-          <div><dt>Bayar via</dt><dd>{trade.payment_methods}</dd></div>
+          <div><dt>Bayar via</dt><dd>{pecah.methods}</dd></div>
+          {pecah.contact && (
+            <div><dt>Kontak</dt><dd>{linkKontak
+              ? <a href={linkKontak} target="_blank" rel="noreferrer" className="link">{pecah.contact}</a>
+              : pecah.contact}</dd></div>
+          )}
           <div><dt>Penjual</dt><dd className="mono">{shortAddr(trade.seller)}{isSeller ? ' (kamu)' : ''}</dd></div>
           <div><dt>Pembeli</dt><dd className="mono">{shortAddr(trade.buyer)}{isBuyer ? ' (kamu)' : ''}</dd></div>
         </dl>

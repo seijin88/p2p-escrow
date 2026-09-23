@@ -6,7 +6,7 @@ const GEN_WEI = 10n ** 18n
 
 export default function PostOfferForm({ onSuccess, onClose }) {
   const { walletClient, address } = useWallet()
-  const [form, setForm] = useState({ gen: '1', fiat: '150000', rate: '150000', methods: 'DANA' })
+  const [form, setForm] = useState({ gen: '1', fiat: '150000', rate: '150000', methods: 'DANA', contact: '' })
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -25,11 +25,12 @@ export default function PostOfferForm({ onSuccess, onClose }) {
     setError(''); setStatus(''); setLoading(true)
     try {
       setStatus('Mengirim GEN ke kontrak…')
+      const via = form.contact.trim() ? `${form.methods.trim()} · ${form.contact.trim()}` : form.methods.trim()
       const hash = await createOffer(walletClient, {
         fiatCurrency: 'IDR',
         fiatAmount: form.fiat,
         rate: form.rate,
-        paymentMethods: form.methods,
+        paymentMethods: via,
         amountWei: amountWei.toString(),
       })
       setStatus('Menunggu finalisasi… (bisa 1–2 menit)')
@@ -69,6 +70,11 @@ export default function PostOfferForm({ onSuccess, onClose }) {
           <div className="form-group">
             <label>Terima via</label>
             <input className="input" value={form.methods} onChange={e => set('methods', e.target.value)} placeholder="DANA, BCA, GoPay…" required />
+          </div>
+          <div className="form-group">
+            <label>Kontakmu (dilihat pembeli)</label>
+            <input className="input" value={form.contact} onChange={e => set('contact', e.target.value)} placeholder="@telegram / WA / email" />
+            <span className="hint">Opsional — untuk janjian bayar di luar chain.</span>
           </div>
           <div className="form-ringkas">
             Mengunci <strong>{form.gen} GEN</strong> · minta <strong>Rp{Number(form.fiat || 0).toLocaleString('id-ID')}</strong>

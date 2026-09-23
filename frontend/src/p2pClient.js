@@ -72,6 +72,26 @@ export function isExpired(expiresAt) {
   return Math.floor(Date.now() / 1000) > Number(expiresAt)
 }
 
+// Kontak diselipkan di payment_methods: "DANA · @nama"
+export function splitMethods(methods) {
+  const parts = String(methods || '').split('·').map(s => s.trim()).filter(Boolean)
+  if (parts.length < 2) return { methods: String(methods || ''), contact: '' }
+  const last = parts[parts.length - 1]
+  if (/^@[\w.]+$/.test(last) || /^[+\d][\d\s-]{5,}$/.test(last) || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(last)) {
+    return { methods: parts.slice(0, -1).join(' · '), contact: last }
+  }
+  return { methods: String(methods || ''), contact: '' }
+}
+
+export function contactLink(contact) {
+  if (!contact) return null
+  const c = contact.trim()
+  if (c.startsWith('@')) return `https://t.me/${c.slice(1)}`
+  if (/^[+\d][\d\s-]{5,}$/.test(c)) return `https://wa.me/${c.replace(/[\s-]/g, '')}`
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c)) return `mailto:${c}`
+  return null
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // READ — kontrak studio (p2p_escrow_studio.py)
 // ════════════════════════════════════════════════════════════════════════════

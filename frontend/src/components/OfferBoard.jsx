@@ -4,6 +4,7 @@ import {
   getOpenOffers, getOfferCount, getTradeCount,
   lockOrder, cancelOffer, waitForTransaction,
   fmt, shortAddr, timeAgo, expiryLeft, isExpired,
+  splitMethods, contactLink,
 } from '../p2pClient.js'
 import StatusBadge from './StatusBadge.jsx'
 
@@ -89,6 +90,8 @@ export default function OfferBoard({ onTradeCreated, registered, onNeedRegister 
           const state = actionState[offer.offer_id] || {}
           const isMine = address && String(offer.seller).toLowerCase() === address.toLowerCase()
           const kedalu = isExpired(offer.expires_at)
+          const pecah = splitMethods(offer.payment_methods)
+          const linkKontak = contactLink(pecah.contact)
           return (
             <article key={offer.offer_id} className={`karcis ${isMine ? 'punyaku' : ''}`}>
               <div className="karcis-kepala">
@@ -110,7 +113,12 @@ export default function OfferBoard({ onTradeCreated, registered, onNeedRegister 
               <div className="karcis-perforasi" aria-hidden="true" />
               <dl className="karcis-meta">
                 <div><dt>Kurs</dt><dd>Rp{Number(offer.rate).toLocaleString('id-ID')} / {offer.token}</dd></div>
-                <div><dt>Bayar via</dt><dd>{offer.payment_methods}</dd></div>
+                <div><dt>Bayar via</dt><dd>{pecah.methods}</dd></div>
+                {pecah.contact && (
+                  <div><dt>Kontak</dt><dd>{linkKontak
+                    ? <a href={linkKontak} target="_blank" rel="noreferrer" className="link">{pecah.contact}</a>
+                    : pecah.contact}</dd></div>
+                )}
                 <div><dt>Pengepul</dt><dd className="mono">{shortAddr(offer.seller)}</dd></div>
                 <div><dt>Dipasang</dt><dd>{timeAgo(offer.created_at)}</dd></div>
                 <div><dt>Batas</dt><dd className={kedalu ? 'merah' : 'kuning'}>{expiryLeft(offer.expires_at)}</dd></div>
