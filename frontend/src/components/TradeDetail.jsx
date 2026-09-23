@@ -64,12 +64,16 @@ export default function TradeDetail({ tradeId, onBack }) {
     return () => clearInterval(id)
   }, [trade, refresh])
 
-  async function doAction(fn, label) {
+  async function doAction(fn, label, debugArgs) {
     if (!walletClient) return setError('Sambungkan dompet dulu')
+    console.log('[titip] mulai:', label, debugArgs || '')
+    console.log('[titip] walletClient ada:', !!walletClient, '| address:', address)
     setError(''); setTxStatus(''); setBusy(true)
     try {
       setTxStatus(`${label}… (menunggu popup dompet)`)
+      console.log('[titip] memanggil writeContract…')
       const hash = await withWalletTimeout(fn(), 120000, label)
+      console.log('[titip] hash diterima:', hash)
       setTxStatus('Menunggu finalisasi… (bisa 1–2 menit)')
       await waitForTransaction(hash)
       setTxStatus(`${label} terekam.`)
@@ -193,7 +197,11 @@ export default function TradeDetail({ tradeId, onBack }) {
                   value={proofUrl} onChange={e => setProofUrl(e.target.value)} />
                 <button className="btn btn-primary"
                   disabled={busy || uploading || !proofUrl.startsWith('http')}
-                  onClick={() => doAction(() => setProofUrl(walletClient, tradeId, proofUrl), 'Mengirim bukti')}>
+                  onClick={() => doAction(
+                    () => setProofUrl(walletClient, tradeId, proofUrl),
+                    'Mengirim bukti',
+                    { tradeId: String(tradeId), urlLen: proofUrl.length },
+                  )}>
                   {busy ? '…' : 'Kirim Bukti'}
                 </button>
               </div>
