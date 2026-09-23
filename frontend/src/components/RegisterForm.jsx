@@ -1,5 +1,5 @@
 import React from 'react'
-import { useWallet } from '../WalletContext.jsx'
+import { useWallet } from '../useWallet.js'
 import { registerAccount, waitForTransaction } from '../p2pClient.js'
 
 export default function RegisterForm({ onRegistered }) {

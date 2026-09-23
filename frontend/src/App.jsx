@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react'
-import { useWallet } from './WalletContext.jsx'
+import { useWallet } from './useWallet.js'
 import WalletConnect from './components/WalletConnect.jsx'
 import OfferBoard from './components/OfferBoard.jsx'
 import PostOfferForm from './components/PostOfferForm.jsx'

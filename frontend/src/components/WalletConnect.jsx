@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useWallet } from '../WalletContext.jsx'
+import { useWallet } from '../useWallet.js'
 import { withWalletTimeout } from '../p2pClient.js'
 
 export default function WalletConnect() {

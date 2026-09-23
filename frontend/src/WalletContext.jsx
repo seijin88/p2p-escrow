@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useState, useEffect, useCallback } from 'react'
 import { createClient } from 'genlayer-js'
 import { testnetBradbury } from 'genlayer-js/chains'
 
-const WalletContext = createContext(null)
+export const WalletContext = createContext(null)
 
 // Testnet Bradbury chain params for wallet_addEthereumChain
 const BRADBURY_PARAMS = {
@@ -175,8 +175,4 @@ export function WalletProvider({ children }) {
       {children}
     </WalletContext.Provider>
   )
-}
-
-export function useWallet() {
-  return useContext(WalletContext)
 }

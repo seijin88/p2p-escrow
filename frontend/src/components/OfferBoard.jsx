@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useWallet } from '../WalletContext.jsx'
+import { useWallet } from '../useWallet.js'
 import {
   getOpenOffers, getOfferCount, getTradeCount,
   lockOrder, cancelOffer, waitForTransaction,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useWallet } from '../WalletContext.jsx'
+import { useWallet } from '../useWallet.js'
 import { getAllTrades, getMyTrades, fmt, shortAddr } from '../p2pClient.js'
 import StatusBadge from './StatusBadge.jsx'
 

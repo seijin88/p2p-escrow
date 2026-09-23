@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useWallet } from '../WalletContext.jsx'
+import { useWallet } from '../useWallet.js'
 import { createOffer, waitForTransaction, fmt } from '../p2pClient.js'
 
 const GEN_WEI = 10n ** 18n
