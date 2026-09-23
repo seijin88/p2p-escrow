@@ -1,12 +1,27 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import pasar from '../assets/pasar.jpg'
 
 // Latar foto pasar + pejalan kaki siluet yang datang-pergi (CSS/SVG).
 export default function Landing({ onLaunch }) {
+  const bungkusRef = useRef(null)
+
+  function handleGerak(e) {
+    const el = bungkusRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const x = (e.clientX - r.left) / r.width - 0.5
+    const y = (e.clientY - r.top) / r.height - 0.5
+    el.style.transform = `translate(${(x * -18).toFixed(1)}px, ${(y * -14).toFixed(1)}px)`
+  }
+
   return (
     <div className="landing landing-foto">
-      <div className="foto-panggung">
-        <img src={pasar} alt="Gang pasar tradisional" className="foto-pasar" />
+      <div className="foto-panggung" onMouseMove={handleGerak} onMouseLeave={() => {
+        if (bungkusRef.current) bungkusRef.current.style.transform = ''
+      }}>
+        <div className="foto-bungkus" ref={bungkusRef}>
+          <img src={pasar} alt="Gang pasar tradisional" className="foto-pasar" />
+        </div>
         <svg viewBox="0 0 800 500" className="pejalan-lapisan" aria-hidden="true">
           <g className="pejalan pj-1" fill="#2b2620" opacity="0.85">
             <circle cx="0" cy="-32" r="9" />
