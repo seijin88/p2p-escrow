@@ -15,6 +15,7 @@ const BRADBURY_PARAMS = {
 export function WalletProvider({ children }) {
   const [address, setAddress]           = useState(null)
   const [walletClient, setWalletClient] = useState(null)
+  const [provider, setProvider]         = useState(null)
   const [chainId, setChainId]           = useState(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError]               = useState('')
@@ -84,6 +85,7 @@ export function WalletProvider({ children }) {
       const client = buildWalletClient(provider, addr)
       setAddress(addr)
       setWalletClient(client)
+      setProvider(provider)
       setWalletType(provider.isRabby ? 'rabby' : 'metamask')
 
       return addr
@@ -99,6 +101,7 @@ export function WalletProvider({ children }) {
   function disconnect() {
     setAddress(null)
     setWalletClient(null)
+    setProvider(null)
     setChainId(null)
     setWalletType(null)
     setError('')
@@ -116,6 +119,7 @@ export function WalletProvider({ children }) {
         const addr = accounts[0]
         setAddress(addr)
         setWalletClient(buildWalletClient(provider, addr))
+        setProvider(provider)
       }
     }
 
@@ -140,6 +144,7 @@ export function WalletProvider({ children }) {
           setChainId(cid)
           setAddress(addr)
           setWalletClient(buildWalletClient(provider, addr))
+          setProvider(provider)
           setWalletType(provider.isRabby ? 'rabby' : 'metamask')
         })
       }
@@ -157,6 +162,7 @@ export function WalletProvider({ children }) {
     <WalletContext.Provider value={{
       address,
       walletClient,
+      provider,
       walletType,
       chainId,
       isConnecting,
