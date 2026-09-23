@@ -234,6 +234,22 @@ export async function arbitrateAI(walletClient, tradeId, sellerNote) {
   })
 }
 
+// Batasi janji write agar dompet yang diam tidak menggantung selamanya.
+export async function withWalletTimeout(promise, ms = 120000, label = 'Transaksi') {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(
+      `${label} tidak direspons dompet dalam ${Math.round(ms / 1000)} dtk. ` +
+      'Cek popup Rabby/MetaMask, pastikan dompet terbuka & di jaringan Bradbury.'
+    )), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Network helpers
 // ════════════════════════════════════════════════════════════════════════════

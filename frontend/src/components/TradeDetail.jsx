@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import {
   getTrade, setProofUrl, releaseCrypto, forceRelease, arbitrateAI, getOwner,
-  waitForTransaction, fmt, shortAddr, splitMethods, contactLink,
+  waitForTransaction, withWalletTimeout, fmt, shortAddr, splitMethods, contactLink,
 } from '../p2pClient.js'
 import StatusBadge from './StatusBadge.jsx'
 import RutePeta from './RutePeta.jsx'
@@ -68,8 +68,8 @@ export default function TradeDetail({ tradeId, onBack }) {
     if (!walletClient) return setError('Sambungkan dompet dulu')
     setError(''); setTxStatus(''); setBusy(true)
     try {
-      setTxStatus(`${label}…`)
-      const hash = await fn()
+      setTxStatus(`${label}… (menunggu popup dompet)`)
+      const hash = await withWalletTimeout(fn(), 120000, label)
       setTxStatus('Menunggu finalisasi… (bisa 1–2 menit)')
       await waitForTransaction(hash)
       setTxStatus(`${label} terekam.`)
