@@ -164,6 +164,25 @@ body {
 .st-cancelled, .st-expired { color: var(--merah); border-color: var(--merah); }
 .st-unknown { color: var(--tinta-muda); border-color: var(--tinta-muda); }
 
+/* ── Peta rute ── */
+.peta-rute { margin-bottom: 18px; }
+.peta-svg { width: 100%; height: auto; display: block; }
+.jalur { fill: none; stroke-linecap: round; }
+.jalur-aktif { stroke: #b9ac83; }
+.jalur-jalan { stroke: var(--emas); stroke-dasharray: 10 8; animation: gerak 1.2s linear infinite; }
+.jalur-sampai { stroke: var(--hijau); }
+.jalur-balik { stroke: var(--merah); }
+.jalur-mati { stroke: #cfc39e; stroke-dasharray: 3 7; }
+@keyframes gerak { to { stroke-dashoffset: -18; } }
+.panah-maju { fill: var(--emas); }
+.panah-balik { fill: var(--merah); }
+.stasiun .node { fill: var(--kertas); stroke: var(--tinta); stroke-width: 2.5; }
+.stasiun .node.brankas { fill: var(--emas); stroke: #1c1607; }
+.node-huruf { font-family: var(--mono); font-size: 13px; font-weight: bold; fill: var(--tinta); }
+.node-nama { font-size: 12px; fill: var(--tinta); }
+.node-addr { font-family: var(--mono); font-size: 10px; fill: var(--tinta-muda); }
+.peta-ket { font-size: 13.5px; font-style: italic; color: var(--tinta-muda); margin: 6px 0 0; }
+
 /* ── Nota (detail trade) ── */
 .nota {
   background: var(--kertas); color: var(--tinta);

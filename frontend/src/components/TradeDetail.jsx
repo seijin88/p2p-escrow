@@ -5,6 +5,7 @@ import {
   waitForTransaction, fmt, shortAddr,
 } from '../p2pClient.js'
 import StatusBadge from './StatusBadge.jsx'
+import RutePeta from './RutePeta.jsx'
 
 const PINATA_JWT = import.meta.env.VITE_PINATA_JWT
 
@@ -130,6 +131,8 @@ export default function TradeDetail({ tradeId, onBack }) {
           </React.Fragment>
         ))}
       </div>
+
+      <RutePeta trade={trade} />
 
       <div className="nota-rincian">
         <div className="nota-jumlah">
