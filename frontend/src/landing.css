@@ -32,6 +32,35 @@
 .landing-langkah p { margin: 0; font-size: 14px; }
 .landing-note { margin-top: 16px; font-size: 13px; color: #5c665c; }
 
+/* ── Ukiran pasar (SVG hidup) ── */
+.ukiran-bingkai { position: relative; margin: 26px 0 6px; }
+.ukiran { width: 100%; height: auto; display: block; }
+.ukiran-cap {
+  position: absolute; top: 14px; left: 14px;
+  background: #232a22; color: #f2e9d2;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px; letter-spacing: 1px;
+  padding: 5px 12px; border-radius: 6px;
+}
+.ukir-goyang { animation: goyang 3.2s ease-in-out infinite; }
+@keyframes goyang { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.ukir-kain { animation: kibas 4s ease-in-out infinite; transform-origin: 560px 260px; }
+@keyframes kibas { 0%, 100% { transform: skewX(0deg); } 50% { transform: skewX(2.5deg); } }
+.ukir-tenda { animation: tenda 5s ease-in-out infinite; }
+@keyframes tenda { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(0.6deg); } }
+.ukir-matahari { animation: putar 40s linear infinite; }
+@keyframes putar { to { transform: rotate(360deg); } }
+.ukir-koin { animation: koin 2.4s ease-in-out infinite; }
+@keyframes koin { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
+.ukir-burung { animation: terbang 16s linear infinite; }
+.ukir-burung-1 { animation-delay: 0s; }
+.ukir-burung-2 { animation-delay: -8s; }
+@keyframes terbang {
+  from { transform: translate(820px, 60px); }
+  to { transform: translate(-60px, 110px); }
+}
+.landing-pasar .landing-kertas { max-width: 720px; }
+
 @media (max-width: 600px) {
   .landing-kertas { padding: 36px 24px; }
   .landing-judul { font-size: 36px; }
