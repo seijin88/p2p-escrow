@@ -149,6 +149,7 @@ body {
 .offer-actions { margin-top: 14px; display: flex; }
 .offer-lock-btn { width: 100%; }
 .offer-alert { margin-top: 12px; }
+.karcis .btn-ghost { color: var(--tinta); border-color: #b9ac83; }
 
 /* ── Stempel status ── */
 .stempel {

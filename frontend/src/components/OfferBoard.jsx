@@ -26,6 +26,12 @@ export default function OfferBoard({ onTradeCreated, registered, onNeedRegister 
 
   useEffect(() => { refresh() }, [refresh])
 
+  function pesanGalat(err) {
+    const m = err?.message || 'Gagal'
+    if (/user rejected|denied/i.test(m)) return 'Dibatalkan di dompet.'
+    return m
+  }
+
   async function handleLock(offerId) {
     if (!walletClient || !address) return
     if (!registered) { onNeedRegister?.(); return }
@@ -39,7 +45,7 @@ export default function OfferBoard({ onTradeCreated, registered, onNeedRegister 
       const tc = await getTradeCount()
       onTradeCreated?.(tc > 0 ? tc - 1 : null)
     } catch (err) {
-      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Gagal' } }))
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: pesanGalat(err) } }))
     }
   }
 
@@ -52,7 +58,7 @@ export default function OfferBoard({ onTradeCreated, registered, onNeedRegister 
       setActionState(s => ({ ...s, [offerId]: { loading: false, status: 'Lapak dibatalkan, dana kembali', error: '' } }))
       await refresh()
     } catch (err) {
-      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: err.message || 'Gagal' } }))
+      setActionState(s => ({ ...s, [offerId]: { loading: false, status: '', error: pesanGalat(err) } }))
     }
   }
 
@@ -117,7 +123,7 @@ export default function OfferBoard({ onTradeCreated, registered, onNeedRegister 
               <div className="offer-actions">
                 {isMine ? (
                   <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(offer.offer_id)} disabled={state.loading}>
-                    ✕ Tutup Lapak
+                    {state.loading ? '…' : '✕ Tutup Lapak & Tarik Dana'}
                   </button>
                 ) : (
                   <button
