@@ -30,7 +30,71 @@
   align-items: center; justify-content: center; margin-bottom: 8px;
 }
 .landing-langkah p { margin: 0; font-size: 14px; }
-.landing-note { margin-top: 16px; font-size: 13px; color: #5c665c; }
+/* ── Landing foto pasar hidup ── */
+.landing-foto { display: block; padding: 0; background: #0d1510; }
+.foto-panggung { position: relative; height: 92vh; min-height: 560px; overflow: hidden; }
+.foto-pasar {
+  position: absolute; inset: -6%;
+  width: 112%; height: 112%; object-fit: cover;
+  animation: kenburns 36s ease-in-out infinite alternate;
+}
+@keyframes kenburns {
+  from { transform: scale(1) translate(0, 0); }
+  to { transform: scale(1.12) translate(-1.5%, 1%); }
+}
+.pejalan-lapisan { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pejalan { animation-timing-function: linear; animation-iteration-count: infinite; }
+.pj-1 { animation: lewat-kanan 23s linear infinite; }
+.pj-2 { animation: lewat-kiri 31s linear infinite; }
+.pj-3 { animation: lewat-kanan 41s linear infinite; animation-delay: -15s; }
+@keyframes lewat-kanan {
+  from { transform: translate(-60px, 400px); }
+  to { transform: translate(860px, 400px); }
+}
+@keyframes lewat-kiri {
+  from { transform: translate(860px, 430px) scaleX(-1); }
+  to { transform: translate(-60px, 430px) scaleX(-1); }
+}
+.burung-foto { animation-timing-function: linear; animation-iteration-count: infinite; }
+.b-1 { animation: burung-foto 19s linear infinite; }
+.b-2 { animation: burung-foto 27s linear infinite; animation-delay: -9s; }
+@keyframes burung-foto {
+  from { transform: translate(830px, 70px); }
+  to { transform: translate(-60px, 130px); }
+}
+.cahaya {
+  position: absolute; width: 220px; height: 220px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 244, 214, 0.35), transparent 70%);
+  animation: melayang 9s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.c1 { top: 12%; left: 8%; }
+.c2 { bottom: 18%; right: 10%; animation-delay: -4s; }
+@keyframes melayang {
+  from { transform: translate(0, 0); opacity: 0.7; }
+  to { transform: translate(40px, 30px); opacity: 1; }
+}
+.foto-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(10, 14, 11, 0.88) 0%, rgba(10, 14, 11, 0.25) 45%, rgba(10, 14, 11, 0.05) 70%);
+}
+.foto-teks {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 40px 32px; max-width: 1080px; margin: 0 auto;
+  color: #f2e9d2;
+}
+.foto-cap { letter-spacing: 3px; font-size: 12px; text-transform: uppercase; color: #c9a227; margin: 0; }
+.foto-judul { font-size: 64px; margin: 8px 0; font-weight: normal; }
+.foto-judul em { color: #c9a227; font-style: normal; }
+.foto-sub { font-size: 18px; max-width: 520px; color: #e4d7b4; }
+.landing-bawah { border-radius: 0; max-width: none; }
+.landing-bawah .landing-langkah { max-width: 720px; margin: 0 auto; }
+
+@media (max-width: 600px) {
+  .foto-judul { font-size: 42px; }
+  .foto-panggung { height: 88vh; }
+}
+.landing-note { margin-top: 16px; font-size: 13px; color: #5c665c; text-align: center; }
 
 /* ── Ukiran pasar (SVG hidup) ── */
 .ukiran-bingkai { position: relative; margin: 26px 0 6px; }
