@@ -1,43 +1,43 @@
 import React, { useState } from 'react'
 import { useWallet } from '../WalletContext.jsx'
-import { postOffer, waitForTransaction } from '../p2pClient.js'
+import { createOffer, waitForTransaction, fmt } from '../p2pClient.js'
 
-const TOKENS = ['GEN']
-const FIATS  = ['IDR', 'USD']
+const GEN_WEI = 10n ** 18n
 
 export default function PostOfferForm({ onSuccess, onClose }) {
   const { walletClient, address } = useWallet()
-  const [form, setForm] = useState({
-    token: 'GEN', cryptoAmount: '', fiatCurrency: 'IDR',
-    fiatAmount: '', rate: '', paymentMethods: '',
-  })
+  const [form, setForm] = useState({ gen: '1', fiat: '150000', rate: '150000', methods: 'DANA' })
   const [loading, setLoading] = useState(false)
-  const [status, setStatus]   = useState('')
-  const [error, setError]     = useState('')
+  const [status, setStatus] = useState('')
+  const [error, setError] = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!walletClient || !address) return setError('Connect wallet first')
+    if (!walletClient || !address) return setError('Sambungkan dompet dulu')
+    let amountWei
+    try {
+      const gen = Number(String(form.gen).replace(',', '.'))
+      if (!(gen > 0)) throw new Error('isi')
+      amountWei = BigInt(Math.round(gen * 1e18))
+    } catch { return setError('Jumlah GEN tidak valid') }
     setError(''); setStatus(''); setLoading(true)
     try {
-      setStatus('Posting offer…')
-      const hash = await postOffer(walletClient, {
-        token: form.token,
-        cryptoAmount: form.cryptoAmount,
-        fiatCurrency: form.fiatCurrency,
-        fiatAmount: form.fiatAmount,
+      setStatus('Mengirim GEN ke kontrak…')
+      const hash = await createOffer(walletClient, {
+        fiatCurrency: 'IDR',
+        fiatAmount: form.fiat,
         rate: form.rate,
-        paymentMethods: form.paymentMethods,
-        amountWei: BigInt(Math.round(parseFloat(form.cryptoAmount) * 1e18)),
+        paymentMethods: form.methods,
+        amountWei: amountWei.toString(),
       })
-      setStatus('Waiting for confirmation…')
+      setStatus('Menunggu finalisasi… (bisa 1–2 menit)')
       await waitForTransaction(hash)
-      setStatus('Offer posted!')
-      setTimeout(() => { onSuccess?.(); onClose?.() }, 1200)
+      setStatus('Lapak terpasang!')
+      setTimeout(() => onSuccess?.(), 1200)
     } catch (err) {
-      setError(err.message || 'Transaction failed')
+      setError(err.message || 'Transaksi gagal')
     } finally {
       setLoading(false)
     }
@@ -45,73 +45,46 @@ export default function PostOfferForm({ onSuccess, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>📢 Post Sell Offer</h3>
-          <button className="modal-close" onClick={onClose}>✕</button>
+      <div className="karcis karcis-form" onClick={e => e.stopPropagation()}>
+        <div className="karcis-kepala">
+          <span className="karcis-nomor">LAPAK BARU</span>
         </div>
-
-        <div className="tips-box">
-          <strong>💡 Tips</strong>
-          <ul>
-            <li>Your rate must be within ±10% of live market — AI verifies at buyer lock</li>
-            <li>Buyer has 1 hour to pay after locking. You have 30 min to release after proof.</li>
-          </ul>
-        </div>
-
+        <h2 className="form-title">Pasang Lapak Jual</h2>
+        <p className="form-desc">GEN dikunci di kontrak. Rupiah dibayar pembeli langsung ke kamu.</p>
         <form className="form" onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Jumlah (GEN)</label>
+            <input className="input mono" value={form.gen} onChange={e => set('gen', e.target.value)} required />
+          </div>
           <div className="form-row">
             <div className="form-group">
-              <label>Token</label>
-              <select className="input" value={form.token} onChange={e => set('token', e.target.value)}>
-                {TOKENS.map(t => <option key={t}>{t}</option>)}
-              </select>
+              <label>Minta (IDR)</label>
+              <input className="input mono" value={form.fiat} onChange={e => set('fiat', e.target.value)} required />
             </div>
             <div className="form-group">
-              <label>Amount to Lock</label>
-              <input className="input" type="number" step="0.0001" min="0.0001"
-                placeholder="e.g. 10.5" value={form.cryptoAmount}
-                onChange={e => set('cryptoAmount', e.target.value)} required />
+              <label>Kurs (IDR/GEN)</label>
+              <input className="input mono" value={form.rate} onChange={e => set('rate', e.target.value)} required />
             </div>
           </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Fiat Currency</label>
-              <select className="input" value={form.fiatCurrency} onChange={e => set('fiatCurrency', e.target.value)}>
-                {FIATS.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Total Fiat Amount</label>
-              <input className="input" type="number" min="1"
-                placeholder="e.g. 150000" value={form.fiatAmount}
-                onChange={e => set('fiatAmount', e.target.value)} required />
-            </div>
-          </div>
-
           <div className="form-group">
-            <label>Rate ({form.fiatCurrency} per 1 {form.token})</label>
-            <input className="input" type="number" min="1"
-              placeholder="e.g. 14500" value={form.rate}
-              onChange={e => set('rate', e.target.value)} required />
-            <span className="hint">Live GEN price is fetched when the buyer locks — must be within ±10% of market</span>
+            <label>Terima via</label>
+            <input className="input" value={form.methods} onChange={e => set('methods', e.target.value)} placeholder="DANA, BCA, GoPay…" required />
           </div>
-
-          <div className="form-group">
-            <label>Accepted Payment Methods</label>
-            <input className="input" placeholder="e.g. BCA, GoPay, OVO, Dana"
-              value={form.paymentMethods} onChange={e => set('paymentMethods', e.target.value)} required />
+          <div className="form-ringkas">
+            Mengunci <strong>{form.gen} GEN</strong> · minta <strong>Rp{Number(form.fiat || 0).toLocaleString('id-ID')}</strong>
           </div>
-
-          <button className="btn btn-primary" type="submit" disabled={loading || !address}>
-            {loading ? 'Posting…' : `Lock ${form.token} & Post Offer`}
-          </button>
+          <div className="form-actions">
+            <button className="btn btn-ghost" type="button" onClick={onClose}>Batal</button>
+            <button className="btn btn-primary" type="submit" disabled={loading || !address}>
+              {loading ? 'Memasang…' : 'Kunci & Pasang'}
+            </button>
+          </div>
         </form>
-
         {status && <div className="alert alert-info">{status}</div>}
-        {error  && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error">{error}</div>}
       </div>
     </div>
   )
 }
+
+export { GEN_WEI, fmt }

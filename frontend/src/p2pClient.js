@@ -1,15 +1,13 @@
 import { createClient } from 'genlayer-js'
 import { testnetBradbury } from 'genlayer-js/chains'
 
-const HEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/
-
 const P2P_ESCROW_ADDRESS_ENV = import.meta.env.VITE_P2P_ESCROW_ADDRESS || ''
 export const P2P_ESCROW_ADDRESS = P2P_ESCROW_ADDRESS_ENV.trim()
 
-// ── Public read-only client (no wallet needed) ────────────────────────────────
+// ── Public read-only client (no wallet needed) ──────────────────────────────
 export const publicClient = createClient({ chain: testnetBradbury })
 
-// ── Wallet client from Rabby / MetaMask (window.ethereum) ────────────────────
+// ── Wallet client from Rabby / MetaMask (window.ethereum) ───────────────────
 export function createRabbyClient(provider) {
   return createClient({
     chain: testnetBradbury,
@@ -17,8 +15,8 @@ export function createRabbyClient(provider) {
   })
 }
 
-// ── Transaction poller ────────────────────────────────────────────────────────
-export async function waitForTransaction(txHash, intervalMs = 5000, maxAttempts = 60) {
+// ── Transaction poller ──────────────────────────────────────────────────────
+export async function waitForTransaction(txHash, intervalMs = 5000, maxAttempts = 90) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const tx = await publicClient.getTransaction({ hash: txHash })
@@ -29,187 +27,196 @@ export async function waitForTransaction(txHash, intervalMs = 5000, maxAttempts 
   return null
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// P2P ESCROW — Read
-// ══════════════════════════════════════════════════════════════════════════════
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function parseRecord(v) {
+  if (typeof v === 'string') {
+    try { return JSON.parse(v) } catch { return null }
+  }
+  return v ?? null
+}
 
-export async function getOpenOffers() {
+function toNumber(v) {
+  try { return Number(typeof v === 'bigint' ? v : BigInt(v)) } catch { return 0 }
+}
+
+function fmtWei(wei, digits = 4) {
+  try { return (Number(BigInt(wei)) / 1e18).toFixed(digits) } catch { return String(wei ?? '—') }
+}
+
+export const fmt = { toNumber, fmtWei }
+
+export function shortAddr(addr) {
+  if (!addr || addr === '0x0000000000000000000000000000000000000000') return '—'
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+export function timeAgo(ts) {
+  if (!ts) return '—'
+  const diff = Math.floor(Date.now() / 1000) - Number(ts)
+  if (diff < 60)   return `${diff} dtk lalu`
+  if (diff < 3600) return `${Math.floor(diff / 60)} mnt lalu`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`
+  return `${Math.floor(diff / 86400)} hari lalu`
+}
+
+export function expiryLeft(expiresAt) {
+  const diff = Number(expiresAt) - Math.floor(Date.now() / 1000)
+  if (diff <= 0) return 'kedaluwarsa'
+  const h = Math.floor(diff / 3600)
+  const m = Math.floor((diff % 3600) / 60)
+  return h > 0 ? `sisa ${h} jam ${m} mnt` : `sisa ${m} mnt`
+}
+
+export function isExpired(expiresAt) {
+  if (!expiresAt) return false
+  return Math.floor(Date.now() / 1000) > Number(expiresAt)
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// READ — kontrak studio (p2p_escrow_studio.py)
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function getOwner() {
   return await publicClient.readContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'get_open_offers',
-    args: [],
+    address: P2P_ESCROW_ADDRESS, functionName: 'get_owner', args: [],
   })
+}
+
+export async function getContractBalance() {
+  return await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS, functionName: 'get_balance', args: [],
+  })
+}
+
+export async function getOfferCount() {
+  return toNumber(await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS, functionName: 'get_offer_count', args: [],
+  }))
+}
+
+export async function getTradeCount() {
+  return toNumber(await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS, functionName: 'get_trade_count', args: [],
+  }))
+}
+
+export async function getOffer(offerId) {
+  return parseRecord(await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS, functionName: 'get_offer', args: [BigInt(offerId)],
+  }))
 }
 
 export async function getTrade(tradeId) {
-  return await publicClient.readContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'get_trade',
-    args: [BigInt(tradeId)],
-  })
+  return parseRecord(await publicClient.readContract({
+    address: P2P_ESCROW_ADDRESS, functionName: 'get_trade', args: [BigInt(tradeId)],
+  }))
 }
 
-export async function getContactInfo(tradeId) {
-  return await publicClient.readContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'get_contact_info',
-    args: [BigInt(tradeId)],
-  })
-}
-
-export async function getProfile(address) {
-  return await publicClient.readContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'get_profile',
-    args: [address],
-  })
-}
-
-export async function getMyLatestTradeId(address, role = 'buyer') {
+export async function isRegistered(addr) {
   try {
-    const trade = await publicClient.readContract({
-      address: P2P_ESCROW_ADDRESS,
-      functionName: 'get_trade',
-      args: [BigInt(0)],
-    })
-    return trade ? trade.trade_id : 0
-  } catch {
-    return 0
+    return !!(await publicClient.readContract({
+      address: P2P_ESCROW_ADDRESS, functionName: 'is_registered', args: [addr],
+    }))
+  } catch { return false }
+}
+
+export async function getOpenOffers() {
+  const n = await getOfferCount()
+  const out = []
+  for (let i = 0; i < n; i++) {
+    try {
+      const o = await getOffer(i)
+      if (o && o.status === 'open') out.push(o)
+    } catch { /* skip unreadable */ }
   }
+  return out.reverse()
 }
 
-export async function getCounters() {
-  return { open_offers: 0, total_trades: 0 }
+export async function getMyTrades(addr) {
+  const me = (addr || '').toLowerCase()
+  const n = await getTradeCount()
+  const out = []
+  for (let i = 0; i < n; i++) {
+    try {
+      const t = await getTrade(i)
+      if (t && (String(t.buyer).toLowerCase() === me || String(t.seller).toLowerCase() === me)) {
+        out.push(t)
+      }
+    } catch { /* skip */ }
+  }
+  return out.reverse()
 }
 
-export async function getSettlementInfo(tradeId) {
-  return await publicClient.readContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'get_trade',
-    args: [BigInt(tradeId)],
+export async function getAllTrades() {
+  const n = await getTradeCount()
+  const out = []
+  for (let i = 0; i < n; i++) {
+    try {
+      const t = await getTrade(i)
+      if (t) out.push(t)
+    } catch { /* skip */ }
+  }
+  return out.reverse()
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WRITE — butuh wallet client
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function registerAccount(walletClient) {
+  return await walletClient.writeContract({
+    address: P2P_ESCROW_ADDRESS, functionName: 'register', args: [],
   })
 }
 
-export async function appealVerdict(walletClient, tradeId) {
+export async function createOffer(walletClient, { fiatCurrency, fiatAmount, rate, paymentMethods, amountWei }) {
   return await walletClient.writeContract({
     address: P2P_ESCROW_ADDRESS,
-    functionName: 'appeal_verdict',
-    args: [BigInt(tradeId)],
-  })
-}
-
-export async function finalizeTrade(walletClient, tradeId) {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'finalize_trade',
-    args: [BigInt(tradeId)],
-  })
-}
-
-export async function getTradeHistory(page = 0, pageSize = 10) {
-  return []
-}
-
-export async function getMyActiveTrades(address) {
-  return []
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// P2P ESCROW — Write (require wallet client)
-// ══════════════════════════════════════════════════════════════════════════════
-
-export async function registerProfile(walletClient, bankName, accountNumber, accountName, contactHandle = '') {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'register_profile',
-    args: [bankName, accountNumber, accountName, contactHandle],
-  })
-}
-
-export async function postOffer(walletClient, { token, cryptoAmount, fiatCurrency, fiatAmount, rate, paymentMethods, amountWei }) {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'post_offer',
-    args: [token, cryptoAmount, fiatCurrency, fiatAmount, rate, paymentMethods],
+    functionName: 'create_offer',
+    args: ['GEN', fiatCurrency, String(fiatAmount), String(rate), paymentMethods],
     value: BigInt(amountWei),
-  })
-}
-
-export async function lockOrder(walletClient, offerId) {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'lock_order',
-    args: [BigInt(offerId)],
-  })
-}
-
-export async function markPaid(walletClient, tradeId, txId) {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'mark_paid',
-    args: [BigInt(tradeId), txId],
-  })
-}
-
-export async function releaseCrypto(walletClient) {
-  return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'release_crypto',
-    args: [],
   })
 }
 
 export async function cancelOffer(walletClient, offerId) {
   return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'cancel_offer',
-    args: [BigInt(offerId)],
+    address: P2P_ESCROW_ADDRESS, functionName: 'cancel_offer', args: [BigInt(offerId)],
   })
 }
 
-export async function expireOffer(walletClient, offerId) {
+export async function lockOrder(walletClient, offerId) {
   return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'expire_offer',
-    args: [BigInt(offerId)],
+    address: P2P_ESCROW_ADDRESS, functionName: 'lock_order', args: [BigInt(offerId)],
   })
 }
 
-export async function openDispute(walletClient, tradeId) {
+export async function setProofUrl(walletClient, tradeId, url) {
   return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'open_dispute',
-    args: [BigInt(tradeId)],
+    address: P2P_ESCROW_ADDRESS, functionName: 'set_proof_url', args: [BigInt(tradeId), url],
   })
 }
 
-export async function escalateAfterTimeout(walletClient, tradeId) {
+export async function releaseCrypto(walletClient, tradeId) {
   return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'escalate_after_seller_timeout',
-    args: [BigInt(tradeId)],
+    address: P2P_ESCROW_ADDRESS, functionName: 'release_crypto', args: [BigInt(tradeId)],
   })
 }
 
-export async function arbitrate(walletClient, tradeId, verdict, reason) {
+export async function forceRelease(walletClient, tradeId) {
   return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'arbitrate',
-    args: [BigInt(tradeId), verdict, reason, false, false, false, false],
+    address: P2P_ESCROW_ADDRESS, functionName: 'force_release', args: [BigInt(tradeId)],
   })
 }
 
-export async function cancelExpiredOrder(walletClient, tradeId) {
+export async function arbitrateAI(walletClient, tradeId, sellerNote) {
   return await walletClient.writeContract({
-    address: P2P_ESCROW_ADDRESS,
-    functionName: 'cancel_expired_order',
-    args: [BigInt(tradeId)],
+    address: P2P_ESCROW_ADDRESS, functionName: 'arbitrate_ai', args: [BigInt(tradeId), sellerNote],
   })
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
 // Network helpers
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
 
 export const BRADBURY_CHAIN = {
   id: testnetBradbury.id,

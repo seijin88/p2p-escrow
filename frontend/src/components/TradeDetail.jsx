@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useWallet } from '../WalletContext.jsx'
 import {
-  getTrade, getContactInfo, markPaid, releaseCrypto, openDispute,
-  waitForTransaction,
+  getTrade, setProofUrl, releaseCrypto, forceRelease, arbitrateAI, getOwner,
+  waitForTransaction, fmt, shortAddr,
 } from '../p2pClient.js'
+import StatusBadge from './StatusBadge.jsx'
 
 const PINATA_JWT = import.meta.env.VITE_PINATA_JWT
 
@@ -15,36 +16,41 @@ async function uploadToIPFS(file) {
     headers: { Authorization: `Bearer ${PINATA_JWT}` },
     body: form,
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Pinata error: ${res.status} ${err}`)
-  }
+  if (!res.ok) throw new Error(`Pinata ${res.status}: ${await res.text()}`)
   const data = await res.json()
   return `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`
 }
 
-export default function TradeDetail({ tradeId, onBack, onSettled }) {
+const TAHAP = ['locked', 'verdict', 'done']
+const TAHAP_LABEL = { locked: 'Dikunci', verdict: 'Putusan AI', done: 'Selesai' }
+
+function tahapOf(trade) {
+  if (!trade) return 0
+  if (['released', 'refunded'].includes(trade.status)) return 2
+  return trade.proof_url ? 1 : 0
+}
+
+export default function TradeDetail({ tradeId, onBack }) {
   const { address, walletClient } = useWallet()
-  const [trade, setTrade]         = useState(null)
-  const [settlement, setSettlement] = useState(null)
-  const [loading, setLoading]     = useState(false)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [txStatus, setTxStatus]   = useState('')
-  const [error, setError]         = useState('')
-  const [proofUrl, setProofUrl]   = useState('')
+  const [trade, setTrade] = useState(null)
+  const [owner, setOwner] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [txStatus, setTxStatus] = useState('')
+  const [error, setError] = useState('')
+  const [proofUrl, setProofUrl] = useState('')
+  const [note, setNote] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [dragOver, setDragOver]   = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const t = await getTrade(tradeId)
+      const [t, o] = await Promise.all([getTrade(tradeId), getOwner().catch(() => '')])
       setTrade(t)
-      getSettlementInfo(tradeId)
-        .then((s) => setSettlement(s))
-        .catch(() => {})
-      if (t?.status === 'settled') onSettled?.()
+      setOwner(o || '')
+      if (t?.proof_url && !proofUrl) setProofUrl(t.proof_url)
     } catch { /* silent */ }
     finally { setLoading(false) }
   }, [tradeId])
@@ -52,402 +58,206 @@ export default function TradeDetail({ tradeId, onBack, onSettled }) {
   useEffect(() => { refresh() }, [refresh])
 
   useEffect(() => {
-    if (!trade || trade.status === 'settled') return
-    const id = setInterval(refresh, 10000)
+    if (!trade || ['released', 'refunded'].includes(trade.status)) return
+    const id = setInterval(refresh, 15000)
     return () => clearInterval(id)
   }, [trade, refresh])
 
-  async function handleFileUpload(file) {
-    if (!file) return
-    if (file.size > 10 * 1024 * 1024) { setError('File too large. Max 10MB.'); return }
-    setUploading(true); setError(''); setTxStatus('Uploading to IPFS...')
-    try {
-      const url = await uploadToIPFS(file)
-      setProofUrl(url)
-      setTxStatus("Uploaded to IPFS. Click I've Paid to submit.")
-    } catch (err) {
-      setError(err.message || 'Upload failed'); setTxStatus('')
-    } finally { setUploading(false) }
-  }
-
-  function handleDrop(e) {
-    e.preventDefault(); setDragOver(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) handleFileUpload(file)
-  }
-
   async function doAction(fn, label) {
-    if (!walletClient) return setError('Connect wallet first')
-    setError(''); setTxStatus(''); setActionLoading(true)
+    if (!walletClient) return setError('Sambungkan dompet dulu')
+    setError(''); setTxStatus(''); setBusy(true)
     try {
-      setTxStatus(`${label}...`)
+      setTxStatus(`${label}…`)
       const hash = await fn()
-      setTxStatus('Waiting for confirmation...')
+      setTxStatus('Menunggu finalisasi… (bisa 1–2 menit)')
       await waitForTransaction(hash)
-      setTxStatus(`${label} confirmed.`)
+      setTxStatus(`${label} terekam.`)
       await refresh()
     } catch (err) {
-      setError(err.message || 'Transaction failed')
+      setError(err.message || 'Transaksi gagal')
     } finally {
-      setActionLoading(false)
+      setBusy(false)
     }
   }
 
-  if (loading && !trade) return <div className="trade-detail-loading"><span className="spinner">Loading</span> Loading trade...</div>
-  if (!trade || Object.keys(trade).length === 0) return (
+  async function handleFile(file) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) return setError('Harus file gambar (struk difoto)')
+    if (file.size > 10 * 1024 * 1024) return setError('Maksimal 10MB')
+    setUploading(true); setError(''); setTxStatus('Mengunggah ke IPFS…')
+    try {
+      const url = await uploadToIPFS(file)
+      setProofUrl(url)
+      setTxStatus('Terunggah. Klik “Kirim Bukti”.')
+    } catch (err) {
+      setError(err.message || 'Unggah gagal'); setTxStatus('')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  if (loading && !trade) return <div className="nota"><p>Membuka nota…</p></div>
+  if (!trade) return (
     <div className="empty-state">
-      <span className="empty-icon">?</span>
-      <p>Trade #{tradeId} not found.</p>
-      <button className="btn btn-ghost btn-sm" onClick={onBack}>Back</button>
+      <p className="empty-big">Nota #{tradeId} tidak ketemu.</p>
+      <button className="btn btn-ghost btn-sm" onClick={onBack}>Kembali</button>
     </div>
   )
 
-  const isSeller = address?.toLowerCase() === trade.seller?.toLowerCase()
-  const isBuyer  = address?.toLowerCase() === trade.buyer?.toLowerCase()
-  const now      = Math.floor(Date.now() / 1000)
-  const payDeadlinePassed     = now > trade.payment_deadline
-  const releaseDeadlinePassed = now > trade.release_deadline
-
-  const cryptoAmt = formatAmount(trade.crypto_amount)
-  const fiatAmt   = Number(trade.fiat_amount).toLocaleString()
+  const isSeller = address?.toLowerCase() === String(trade.seller).toLowerCase()
+  const isBuyer = address?.toLowerCase() === String(trade.buyer).toLowerCase()
+  const isOwner = owner && address?.toLowerCase() === String(owner).toLowerCase()
+  const selesai = ['released', 'refunded'].includes(trade.status)
+  const tahap = tahapOf(trade)
 
   return (
-    <div className="trade-detail">
-      <div className="trade-detail-header">
-        <button className="btn btn-ghost btn-sm" onClick={onBack}>Back</button>
-        <div className="trade-detail-title">
-          <h2>Trade #{trade.trade_id}</h2>
-          <span className={`trade-status-badge status-${trade.status}`}>{LABELS[trade.status] || trade.status}</span>
-        </div>
-        <button className="btn btn-ghost btn-sm" onClick={refresh} disabled={loading}>
-          {loading ? 'Loading' : 'Refresh'}
-        </button>
+    <div className="nota">
+      <div className="nota-kepala">
+        <button className="btn btn-ghost btn-sm" onClick={onBack}>← Pasar</button>
+        <h2>Nota #{trade.trade_id}</h2>
+        <StatusBadge status={trade.status} />
+        <button className="btn btn-ghost btn-sm" onClick={refresh} disabled={loading}>{loading ? '…' : '↻'}</button>
       </div>
 
-      <div className="trade-progress">
-        {STEPS.map((s, i) => {
-          const idx      = STEPS.indexOf(trade.status)
-          const stepDone = i < idx || trade.status === 'settled'
-          const stepActive = s === trade.status
-          return (
-            <React.Fragment key={s}>
-              <div className={`tpstep ${stepDone ? 'done' : ''} ${stepActive ? 'active' : ''}`}>
-                <div className="tpstep-circle">{stepDone ? 'v' : STEP_ICONS[s]}</div>
-                <span className="tpstep-label">{STEP_LABELS[s]}</span>
-              </div>
-              {i < STEPS.length - 1 && <div className={`tpstep-line ${stepDone ? 'done' : ''}`} />}
-            </React.Fragment>
-          )
-        })}
-      </div>
-
-      <div className="trade-summary-card">
-        <div className="ts-row">
-          <div className="ts-cell">
-            <span className="label">Crypto</span>
-            <strong className="amount">{cryptoAmt} {trade.token}</strong>
-          </div>
-          <div className="ts-arrow">to</div>
-          <div className="ts-cell">
-            <span className="label">Fiat</span>
-            <strong className="amount-fiat">{fiatAmt} {trade.fiat_currency}</strong>
-          </div>
-        </div>
-        <div className="ts-meta">
-          <span><span className="label">Seller </span><span className="address">{shortenAddr(trade.seller)}{isSeller ? ' (you)' : ''}</span></span>
-          <span><span className="label">Buyer </span><span className="address">{shortenAddr(trade.buyer)}{isBuyer ? ' (you)' : ''}</span></span>
-          <span><span className="label">Rate </span>{Number(trade.rate).toLocaleString()} {trade.fiat_currency}/{trade.token}</span>
-          <span><span className="label">Payment </span>{trade.payment_methods}</span>
-        </div>
-        {settlement && Number(settlement.market_rate_at_lock) > 0 && (
-          <div className="ts-meta">
-            <span><span className="label">Market at lock </span>
-              {settlement.market_rate_at_lock.toLocaleString()} {trade.fiat_currency}/{trade.token}
-            </span>
-            <span><span className="label">Deviation </span>
-              {settlement.deviation_pct}%
-              {settlement.rate_within_limit
-                ? ' (within ±10%)'
-                : ' (degraded: oracle unavailable, quoted rate used)'}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {trade.status === 'active' && trade.payment_deadline > 0 && (
-        <div className={`deadline-bar ${payDeadlinePassed ? 'expired' : ''}`}>
-          {payDeadlinePassed ? 'Payment window expired' : `Pay within ${formatDeadline(trade.payment_deadline)}`}
-        </div>
-      )}
-      {trade.status === 'paid' && trade.release_deadline > 0 && (
-        <div className={`deadline-bar ${releaseDeadlinePassed ? 'expired' : ''}`}>
-          {releaseDeadlinePassed ? 'Release window expired' : `Seller must release within ${formatDeadline(trade.release_deadline)}`}
-        </div>
-      )}
-
-      {isBuyer && trade.seller_bank_commitment && ['active', 'paid'].includes(trade.status) && (
-        <div className="bank-info-box">
-          <div className="bank-info-title">Transfer to seller's account</div>
-          <div className="bank-info-row">
-            <span className="label">Bank details</span>
-            <strong>Private (P1)</strong>
-          </div>
-          {trade.seller_contact && (
-            <div className="bank-info-row">
-              <span className="label">Contact</span>
-              <a
-                href={getContactLink(trade.seller_contact)}
-                target="_blank"
-                rel="noreferrer"
-                className="contact-link"
-              >
-                {trade.seller_contact}
-              </a>
+      <div className="rel-tahap">
+        {TAHAP.map((s, i) => (
+          <React.Fragment key={s}>
+            <div className={`rel-titik ${i < tahap ? 'lewat' : ''} ${i === tahap && !selesai ? 'jalan' : ''} ${selesai && i === 2 ? 'lewat' : ''}`}>
+              <span className="rel-bola">{i < tahap || selesai && i === 2 ? '✓' : i + 1}</span>
+              <span className="rel-nama">{TAHAP_LABEL[s]}</span>
             </div>
-          )}
-          <div className="bank-info-row"><span className="label">Commitment</span>
-            <code className="bank-acct">{String(trade.seller_bank_commitment).slice(0, 18)}…</code>
-          </div>
-          <div className="bank-info-row"><span className="label">Amount</span><strong className="amount-fiat">{Number(trade.fiat_amount).toLocaleString()} {trade.fiat_currency}</strong></div>
+            {i < TAHAP.length - 1 && <div className={`rel-garis ${i < tahap ? 'lewat' : ''}`} />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="nota-rincian">
+        <div className="nota-jumlah">
+          <div><span className="jumlah-besar">{fmt.fmtWei(trade.crypto_amount)}</span><span className="jumlah-satuan">{trade.token}</span></div>
+          <div className="karcis-panah">⇄</div>
+          <div><span className="jumlah-besar">Rp{Number(trade.fiat_amount).toLocaleString('id-ID')}</span><span className="jumlah-satuan">{trade.fiat_currency}</span></div>
+        </div>
+        <div className="karcis-perforasi" aria-hidden="true" />
+        <dl className="karcis-meta">
+          <div><dt>Kurs</dt><dd>Rp{Number(trade.rate).toLocaleString('id-ID')} / {trade.token}</dd></div>
+          <div><dt>Bayar via</dt><dd>{trade.payment_methods}</dd></div>
+          <div><dt>Penjual</dt><dd className="mono">{shortAddr(trade.seller)}{isSeller ? ' (kamu)' : ''}</dd></div>
+          <div><dt>Pembeli</dt><dd className="mono">{shortAddr(trade.buyer)}{isBuyer ? ' (kamu)' : ''}</dd></div>
+        </dl>
+      </div>
+
+      {isBuyer && trade.status === 'locked' && (
+        <div className="bank-info-box">
+          <div className="bank-info-title">Bayar ke penjual, lalu kirim bukti</div>
           <p className="action-desc">
-            The seller's account number is no longer public. Get it from the seller
-            off-chain (chat, QRIS, etc.). After you pay, the AI arbiter verifies the
-            recipient fields against this on-chain commitment — only an exact match
-            releases the crypto.
+            Transfer <strong>Rp{Number(trade.fiat_amount).toLocaleString('id-ID')}</strong> via <strong>{trade.payment_methods}</strong> —
+            rekening penjual privat, minta langsung ke penjual. Foto struknya (file gambar, bukan link album).
           </p>
         </div>
       )}
 
-      {trade.proof_url && (
-        <div className="proof-box">
-          <span className="label">Payment Proof (AI will verify)</span>
-          <a href={trade.proof_url} target="_blank" rel="noreferrer" className="link proof-link">
-            View Proof on IPFS
-          </a>
-        </div>
-      )}
-
-      {trade.status === 'settled' && (
-        <div className={`verdict-card ${trade.verdict}`}>
-          <div className="verdict-header">
-            <span className="verdict-icon">{trade.verdict === 'release' ? 'OK' : 'REFUND'}</span>
-            <div>
-              <div className="verdict-title">
-                {trade.verdict === 'release' ? 'Crypto released to buyer' : 'Crypto refunded to seller'}
-              </div>
-              <span className={`verdict-tag ${trade.verdict}`}>{trade.verdict?.toUpperCase()}</span>
-            </div>
-          </div>
-          {trade.verdict_reason && (
-            <div className="verdict-reason">
-              <strong>AI Reasoning</strong>
-              <p>{trade.verdict_reason}</p>
-            </div>
+      {(trade.proof_url || (isBuyer && trade.status === 'locked')) && (
+        <div className="bukti-box">
+          <span className="label">Bukti bayar</span>
+          {trade.proof_url && (
+            <a href={trade.proof_url} target="_blank" rel="noreferrer" className="link bukti-link">Lihat bukti di IPFS</a>
           )}
-        </div>
-      )}
-
-      {trade.status !== 'settled' && (
-        <div className="trade-actions">
-          <h4 className="actions-title">Actions</h4>
-
-          {trade.status === 'active' && !payDeadlinePassed && (
-            <div className="action-block">
-              <p className="action-desc">
-                {isBuyer
-                  ? `Pay the seller off-chain (${trade.payment_methods}), then upload your proof screenshot.`
-                  : 'Only the buyer should submit proof.'}
-              </p>
-
+          {isBuyer && trade.status === 'locked' && (
+            <>
               <div
-                className={`ipfs-dropzone ${dragOver ? 'drag-active' : ''} ${uploading ? 'uploading' : ''}`}
+                className={`ipfs-dropzone ${dragOver ? 'drag-active' : ''}`}
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
+                onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]) }}
                 onClick={() => !uploading && fileInputRef.current?.click()}
-                role="button"
-                tabIndex={0}
-                onKeyDown={e => e.key === 'Enter' && !uploading && fileInputRef.current?.click()}
-                aria-label="Upload payment proof to IPFS"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: 'none' }}
-                  onChange={e => handleFileUpload(e.target.files?.[0])}
-                />
-                {uploading ? (
-                  <span className="ipfs-drop-text">Uploading to IPFS...</span>
-                ) : proofUrl.includes('gateway.pinata.cloud') ? (
-                  <span className="ipfs-drop-text ipfs-drop-success">Uploaded to IPFS - click to replace</span>
-                ) : (
-                  <span className="ipfs-drop-text">
-                    Drag and drop screenshot here, or <u>click to browse</u>
-                    <br /><small>Image or PDF, max 10MB, stored on IPFS</small>
-                  </span>
-                )}
+                role="button" tabIndex={0}>
+                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => handleFile(e.target.files?.[0])} />
+                <span className="ipfs-drop-text">
+                  {uploading ? 'Mengunggah…' : 'Seret foto struk ke sini, atau klik untuk pilih'}
+                  <br /><small>Gambar saja, maks 10MB</small>
+                </span>
               </div>
-
               <div className="proof-input-row">
-                <input
-                  className="input"
-                  type="url"
-                  placeholder="Or paste proof URL: https://..."
-                  value={proofUrl}
-                  onChange={e => setProofUrl(e.target.value)}
-                />
-                <button
-                  className="btn btn-primary"
-                  disabled={actionLoading || uploading || !proofUrl.startsWith('http')}
-                  onClick={() => doAction(() => markPaid(walletClient, tradeId, proofUrl), "Marking as paid")}
-                >
-                  {actionLoading ? 'Loading' : "I've Paid"}
+                <input className="input mono" type="url" placeholder="https://… (link file gambar langsung)"
+                  value={proofUrl} onChange={e => setProofUrl(e.target.value)} />
+                <button className="btn btn-primary"
+                  disabled={busy || uploading || !proofUrl.startsWith('http')}
+                  onClick={() => doAction(() => setProofUrl(walletClient, tradeId, proofUrl), 'Mengirim bukti')}>
+                  {busy ? '…' : 'Kirim Bukti'}
                 </button>
               </div>
-            </div>
+            </>
           )}
+        </div>
+      )}
 
-          {trade.status === 'paid' && (
+      {trade.seller_note && (
+        <div className="catatan-box">
+          <span className="label">Pernyataan penjual</span>
+          <p>“{trade.seller_note}”</p>
+        </div>
+      )}
+
+      {selesai && (
+        <div className={`vonis-card ${trade.status}`}>
+          <div className="vonis-title">
+            {trade.status === 'released' ? 'GEN diteruskan ke pembeli' : 'GEN dikembalikan ke penjual'}
+          </div>
+          <StatusBadge status={trade.status} />
+        </div>
+      )}
+
+      {!selesai && (
+        <div className="trade-actions">
+          <h4 className="actions-title">Tindakan</h4>
+
+          {(isSeller || isOwner) && trade.status === 'locked' && (
             <div className="action-block">
               <p className="action-desc">
-                {isSeller ? 'Check the proof above. Release if confirmed, or dispute.' : 'Only the seller should release or dispute.'}
+                {isSeller ? 'Uang sudah masuk? Rilis GEN ke pembeli. Sengketa? Minta wasit AI menilai.' : 'Darurat owner: teruskan paksa ke pembeli.'}
               </p>
               <div className="action-row">
-                <button className="btn btn-accent flex-1"
-                  disabled={actionLoading}
-                  onClick={() => doAction(() => releaseCrypto(walletClient, tradeId), "Releasing crypto")}>
-                  {actionLoading ? 'Loading' : 'Release Crypto'}
+                <button className="btn btn-accent flex-1" disabled={busy}
+                  onClick={() => doAction(() => releaseCrypto(walletClient, tradeId), 'Merilis GEN')}>
+                  {busy ? '…' : 'Rilis GEN'}
                 </button>
-                <button className="btn btn-danger flex-1"
-                  disabled={actionLoading}
-                  onClick={() => doAction(() => openDispute(walletClient, tradeId), "Opening dispute")}>
-                  {actionLoading ? 'Loading' : 'Dispute'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {isBuyer && trade.status === 'paid' && releaseDeadlinePassed && (
-            <div className="action-block">
-              <p className="action-desc">Seller has not responded. Escalate to AI arbiter.</p>
-              <button className="btn btn-secondary w-full"
-                disabled={actionLoading}
-                onClick={() => doAction(() => escalateAfterTimeout(walletClient, tradeId), "Escalating to AI")}>
-                {actionLoading ? 'Loading' : 'Escalate to AI'}
-              </button>
-            </div>
-          )}
-
-          {isSeller && trade.status === 'active' && payDeadlinePassed && (
-            <div className="action-block">
-              <p className="action-desc">Buyer did not pay in time. Cancel and reclaim your crypto.</p>
-              <button className="btn btn-ghost w-full"
-                disabled={actionLoading}
-                onClick={() => doAction(() => cancelExpiredOrder(walletClient, tradeId), "Cancelling order")}>
-                {actionLoading ? 'Loading' : 'Cancel Expired Order'}
-              </button>
-            </div>
-          )}
-
-          {trade.status === 'disputed' && (
-            <div className="action-block">
-              <div className="ai-arbiter-box">
-                <span className="ai-icon">AI</span>
-                <div>
-                  <strong>AI Arbitration</strong>
-                  <p>AI will fetch the proof URL and issue a binding verdict. Multiple validators must agree.</p>
-                </div>
-              </div>
-              <button className="btn btn-secondary w-full"
-                disabled={actionLoading}
-                onClick={() => doAction(() => arbitrate(walletClient, tradeId), "AI arbitrating")}>
-                {actionLoading ? 'AI evaluating... (30-60s)' : 'Trigger AI Arbitration'}
-              </button>
-            </div>
-          )}
-
-          {trade.status === 'arbitrated' && (
-            <div className="action-block">
-              <div className="ai-arbiter-box">
-                <span className="ai-icon" aria-hidden="true">◈</span>
-                <div>
-                  <strong>Verdict: {trade.verdict === 'release' ? 'Release' : 'Refund'} (provisional)</strong>
-                  <p>The appeal window is open for 24h. If the verdict is wrong, either party
-                  can appeal once — the trade re-enters arbitration with the funds still locked.</p>
-                </div>
-              </div>
-              {trade.appeal_deadline > 0 && (
-                <div className="deadline-bar">
-                  {now > trade.appeal_deadline
-                    ? 'Appeal window closed — finalize to execute payout'
-                    : `${formatDeadline(trade.appeal_deadline)} left to appeal`}
-                </div>
-              )}
-              <div className="action-row">
-                {(isSeller || isBuyer) && !trade.appealed && (trade.appeal_deadline || 0) > 0 && now <= trade.appeal_deadline && (
-                  <button className="btn btn-danger flex-1"
-                    disabled={actionLoading}
-                    onClick={() => doAction(() => appealVerdict(walletClient, tradeId), "Appealing verdict")}>
-                    {actionLoading ? 'Loading' : 'Appeal Verdict (24h)'}
-                  </button>
-                )}
-                {(now > trade.appeal_deadline || trade.appeal_deadline === 0) && (
-                  <button className="btn btn-primary flex-1"
-                    disabled={actionLoading}
-                    onClick={() => doAction(() => finalizeTrade(walletClient, tradeId), "Finalizing trade")}>
-                    {actionLoading ? 'Loading' : 'Finalize & Execute Payout'}
+                {isOwner && (
+                  <button className="btn btn-ghost flex-1" disabled={busy}
+                    onClick={() => doAction(() => forceRelease(walletClient, tradeId), 'Force release')}>
+                    {busy ? '…' : 'Force'}
                   </button>
                 )}
               </div>
             </div>
           )}
 
-          {!isSeller && !isBuyer && trade.status !== 'disputed' && (
-            <div className="alert alert-warning">Connect as seller or buyer wallet to take action.</div>
+          {(isSeller || isOwner) && trade.status === 'locked' && trade.proof_url && (
+            <div className="action-block">
+              <p className="action-desc">Tidak sepakat dengan bukti? Wasit AI membaca foto struk + pernyataanmu.</p>
+              <textarea
+                className="input"
+                rows={2}
+                maxLength={500}
+                placeholder="Pernyataanmu, mis. “dana 150rb via DANA sudah masuk 23 Sep”"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+              />
+              <button className="btn btn-secondary w-full" disabled={busy || note.trim().length < 1}
+                onClick={() => doAction(() => arbitrateAI(walletClient, tradeId, note.trim()), 'Wasit AI menilai (30–60 dtk)')}>
+                {busy ? 'AI menilai…' : 'Minta Wasit AI'}
+              </button>
+            </div>
+          )}
+
+          {!isSeller && !isBuyer && !isOwner && (
+            <div className="alert alert-warning">Sambungkan dompet penjual/pembeli untuk bertindak.</div>
           )}
         </div>
       )}
 
       {txStatus && <div className="alert alert-info">{txStatus}</div>}
-      {error    && <div className="alert alert-error">Error: {error}</div>}
+      {error && <div className="alert alert-error">Galat: {error}</div>}
     </div>
   )
-}
-
-const STEPS       = ['active', 'paid', 'disputed', 'arbitrated', 'settled']
-const STEP_LABELS = { active: 'Order Locked', paid: 'Proof Submitted', disputed: 'Disputed', arbitrated: 'AI Decided', settled: 'Finalized', finalized: 'Finalized' }
-const STEP_ICONS  = { active: 'L', paid: '$', disputed: '!', arbitrated: '⚖', settled: 'F', finalized: 'F' }
-const LABELS      = { active: 'Active', paid: 'Awaiting Release', disputed: 'Disputed', arbitrated: 'AI Decided', settled: 'Settled', finalized: 'Finalized' }
-
-function formatAmount(wei) {
-  try { return (Number(BigInt(wei)) / 1e18).toFixed(4) } catch { return wei }
-}
-
-function shortenAddr(addr) {
-  if (!addr || addr === '0x0000000000000000000000000000000000000000') return '-'
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
-
-function formatDeadline(ts) {
-  const diff = ts - Math.floor(Date.now() / 1000)
-  if (diff <= 0) return 'expired'
-  const m = Math.floor(diff / 60)
-  const h = Math.floor(m / 60)
-  return h > 0 ? `${h}h ${m % 60}m` : `${m}m`
-}
-
-function formatTimestamp(ts) {
-  if (!ts) return '—'
-  const d = new Date(ts * 1000)
-  const pad = n => n.toString().padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function getContactLink(handle) {
-  if (!handle) return '#'
-  handle = handle.trim()
-  if (handle.startsWith('@')) return `https://t.me/${handle.slice(1)}`
-  if (handle.includes('@')) return `mailto:${handle}`
-  return '#'
 }

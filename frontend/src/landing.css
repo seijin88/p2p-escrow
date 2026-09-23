@@ -1,53 +1,39 @@
-/* Landing inherits the unified terminal palette from styles.css */
-.landing { background: var(--bg-base); }
-.terminal-window {
-  width: 100%; max-width: 720px;
-  background: #0b0d11;
-  border: 1px solid var(--border-bright);
-  border-radius: var(--r);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  font-family: var(--font-mono);
-}
-.terminal-titlebar {
-  display: flex; align-items: center; gap: 7px;
-  background: #161a20; border-bottom: 1px solid var(--border);
-  padding: 8px 12px;
-}
-.t-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-.t-dot.red { background: #ff5f57; } .t-dot.yellow { background: #febc2e; } .t-dot.green { background: #28c840; }
-.terminal-title { margin-left: auto; font-size: 0.72rem; color: var(--text-muted); }
-.terminal-body { padding: 18px 20px 14px; font-size: 0.82rem; line-height: 1.7; color: var(--text-secondary); }
-.terminal-ascii {
-  color: var(--accent); font-size: 0.58rem; line-height: 1.15;
-  margin-bottom: 14px; user-select: none;
-}
-.term-line { margin-bottom: 10px; }
-.t-prompt { color: var(--green); font-weight: 700; }
-.t-cmd { color: var(--text-primary); }
-.t-out { display: block; padding-left: 14px; color: var(--text-secondary); font-size: 0.78rem; line-height: 1.7; }
-.t-input-line { display: flex; align-items: center; gap: 6px; }
-.t-cursor { color: var(--accent); animation: blink 1s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
+/* Laman depan Titip — undangan masuk pasar */
 
-.landing-cta { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.btn-lg { padding: 14px 34px; font-size: 1rem; font-family: var(--font-mono); }
-.landing-hint { font-size: 0.75rem; color: var(--text-muted); }
-.landing-hint code { color: var(--accent); }
-
-.landing-features {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-  max-width: 760px; width: 100%;
+.landing {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px 20px;
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 26px, rgba(201, 162, 39, 0.05) 26px 28px),
+    radial-gradient(1000px 480px at 50% -10%, rgba(201, 162, 39, 0.16), transparent),
+    #0d1510;
 }
-.feat {
-  background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 14px 16px;
+.landing-kertas {
+  background: var(--kertas, #f2e9d2); color: #232a22;
+  max-width: 640px; width: 100%; border-radius: 18px;
+  padding: 52px 48px; text-align: center; position: relative;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  border-top: 10px solid #c9a227; border-bottom: 10px solid #c9a227;
 }
-.feat-key { font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent); letter-spacing: .1em; }
-.feat h3 { font-size: 0.85rem; font-weight: 700; margin: 6px 0 5px; }
-.feat p { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.55; }
+.landing-cap { letter-spacing: 3px; font-size: 12px; color: #8a6d15; text-transform: uppercase; }
+.landing-judul { font-size: 52px; line-height: 1.05; margin: 14px 0; font-weight: normal; }
+.landing-judul em { color: #20713c; }
+.landing-sub { font-size: 17px; color: #5c665c; max-width: 480px; margin: 0 auto; }
+.landing-langkah { display: flex; gap: 12px; margin: 30px 0; }
+.landing-langkah > div {
+  flex: 1; border: 1px dashed #b9ac83; border-radius: 12px; padding: 14px 10px;
+}
+.landing-langkah span {
+  display: inline-flex; width: 30px; height: 30px; border-radius: 50%;
+  background: #232a22; color: #c9a227; font-weight: bold;
+  align-items: center; justify-content: center; margin-bottom: 8px;
+}
+.landing-langkah p { margin: 0; font-size: 14px; }
+.landing-note { margin-top: 16px; font-size: 13px; color: #5c665c; }
 
-@media (max-width: 640px) {
-  .landing-features { grid-template-columns: 1fr; }
-  .terminal-ascii { display: none; }
+@media (max-width: 600px) {
+  .landing-kertas { padding: 36px 24px; }
+  .landing-judul { font-size: 36px; }
+  .landing-langkah { flex-direction: column; }
 }

@@ -7,81 +7,57 @@ import TradeDetail from './components/TradeDetail.jsx'
 import TradeHistory from './components/TradeHistory.jsx'
 import RegisterForm from './components/RegisterForm.jsx'
 import Landing from './components/Landing.jsx'
-import { isProfileReported, getProfile } from './profileClient.js'
-import { P2P_ESCROW_ADDRESS } from './p2pClient.js'
-
-const PROFILE_KEY = 'p2p_escrow_profile'
+import { isRegistered, P2P_ESCROW_ADDRESS, shortAddr } from './p2pClient.js'
 
 export default function App() {
   const { address, isWrongNetwork, switchToBradbury } = useWallet()
   const [view, setView]       = useState('board')
   const [activeTrade, setActiveTrade] = useState(null)
   const [showPostForm, setShowPostForm] = useState(false)
-  const [profileChecked, setProfileChecked] = useState(false)
-  const [showRegister, setShowRegister]     = useState(false)
-  const [showLanding, setShowLanding]       = useState(true)
+  const [registered, setRegistered] = useState(false)
+  const [checkingReg, setCheckingReg] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
+  const [showLanding, setShowLanding] = useState(true)
 
-  const [hasProfile, setHasProfile] = useState(() => {
-    try { return !!JSON.parse(localStorage.getItem(PROFILE_KEY)) } catch { return false }
-  })
-  const [userProfile, setUserProfile] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) } catch { return null }
-  })
-
-  function saveProfile(p) {
-    setHasProfile(true)
-    setUserProfile(p)
-    if (p) localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
-  }
-
-  const checkProfile = useCallback(async () => {
-    if (!address) { setProfileChecked(true); return }
-    try {
-      const ok = await isProfileReported(address)
-      if (ok) {
-        const p = await getProfile(address)
-        if (p && p.account_name) saveProfile(p)
-        else setHasProfile(true)
-      }
-    } catch {}
-    finally { setProfileChecked(true) }
+  const checkReg = useCallback(async () => {
+    if (!address) { setRegistered(false); return }
+    setCheckingReg(true)
+    try { setRegistered(await isRegistered(address)) }
+    catch { /* silent */ }
+    finally { setCheckingReg(false) }
   }, [address])
 
-  useEffect(() => { checkProfile() }, [checkProfile])
+  useEffect(() => { checkReg() }, [checkReg])
 
   function goToTrade(id)    { setActiveTrade(id); setView('trade') }
   function goBack()         { setActiveTrade(null); setView('board') }
-  function handleRegistered(data) {
+  function handleRegistered() {
     setShowRegister(false)
-    saveProfile(data || { account_name: 'Registered' })
-    setTimeout(checkProfile, 5000)
+    setTimeout(checkReg, 4000)
   }
-  function handleLaunch()   { setShowLanding(false) }
 
   const NAV = [
-    { id: 'board',    label: 'Offers' },
-    { id: 'mytrades', label: 'My Trades' },
-    { id: 'history',  label: 'History' },
+    { id: 'board',    label: 'Pasar' },
+    { id: 'mytrades', label: 'Transaksiku' },
+    { id: 'history',  label: 'Buku Kas' },
   ]
 
-  if (showLanding) {
-    return <Landing onLaunch={handleLaunch} />
-  }
+  if (showLanding) return <Landing onLaunch={() => setShowLanding(false)} />
 
   return (
     <div className="app-container">
       <header className="app-header">
         <div className="header-content">
-          <div className="logo-area" onClick={() => setView('board')} style={{cursor:'pointer'}}>
-            <span className="logo-icon" aria-hidden="true">$</span>
+          <div className="logo-area" onClick={() => { setView('board'); setActiveTrade(null) }}>
+            <span className="logo-cap" aria-hidden="true">T</span>
             <div>
-              <h1 className="app-title">P2P ESCROW<span className="t-prompt">@</span>bradbury</h1>
-              <p className="app-subtitle">escrow.v1 · AI arbitrated · GenLayer</p>
+              <h1 className="app-title">Titip<span className="title-sep">·</span><em>P2P</em></h1>
+              <p className="app-subtitle">pasar escrow · wasit AI · Bradbury</p>
             </div>
           </div>
           <nav className="main-nav">
             {NAV.map(n => (
-              <button key={n.id} className={`nav-btn ${view===n.id?'active':''}`}
+              <button key={n.id} className={`nav-btn ${view === n.id ? 'active' : ''}`}
                 onClick={() => { setView(n.id); setActiveTrade(null) }}>
                 {n.label}
               </button>
@@ -90,19 +66,21 @@ export default function App() {
           <div className="header-right">
             <WalletConnect />
             {address && (
-              <button className={`profile-badge ${hasProfile?'registered':'unregistered'}`}
-                onClick={() => setShowRegister(true)}>
-                {hasProfile ? `Bank: ${userProfile?.account_name?.split(' ')[0]||'OK'}` : 'Register Bank'}
+              <button
+                className={`cap-daftar ${registered ? 'sudah' : 'belum'}`}
+                onClick={() => !registered && setShowRegister(true)}
+                title={registered ? 'Terdaftar di kontrak' : 'Daftar ke kontrak'}>
+                {checkingReg ? '…' : registered ? '✓ Terdaftar' : '○ Daftar'}
               </button>
             )}
-            <div className="network-badge"><span className="dot green"/>Bradbury</div>
+            <div className="network-badge"><span className="dot green" />Bradbury</div>
           </div>
         </div>
         {isWrongNetwork && (
-          <div className="network-banner">Wrong network. <button className="banner-link" onClick={switchToBradbury}>Switch to Bradbury</button></div>
+          <div className="network-banner">Jaringan salah. <button className="banner-link" onClick={switchToBradbury}>Pindah ke Bradbury</button></div>
         )}
-        {address && profileChecked && !hasProfile && !showRegister && (
-          <div className="profile-banner">Register your bank account to trade. <button className="banner-link" onClick={() => setShowRegister(true)}>Register now</button></div>
+        {address && !checkingReg && !registered && !showRegister && (
+          <div className="profile-banner">Daftar ke kontrak dulu sebelum jual/beli. <button className="banner-link" onClick={() => setShowRegister(true)}>Daftar sekarang</button></div>
         )}
       </header>
 
@@ -110,7 +88,7 @@ export default function App() {
         <div className="modal-overlay" onClick={() => setShowRegister(false)}>
           <div onClick={e => e.stopPropagation()}>
             <RegisterForm onRegistered={handleRegistered} />
-            <button className="btn btn-ghost btn-sm" style={{margin:'8px auto',display:'block'}} onClick={() => setShowRegister(false)}>Cancel</button>
+            <button className="btn btn-ghost btn-sm modal-batal" onClick={() => setShowRegister(false)}>Batal</button>
           </div>
         </div>
       )}
@@ -120,35 +98,35 @@ export default function App() {
           <>
             <div className="page-actions">
               {address
-                ? hasProfile
-                  ? <button className="btn btn-primary" onClick={() => setShowPostForm(true)}>+ Post Sell Offer</button>
-                  : <button className="btn btn-secondary" onClick={() => setShowRegister(true)}>Register Bank to Sell</button>
-                : <div className="alert alert-info connect-prompt">Connect wallet to trade.</div>
+                ? registered
+                  ? <button className="btn btn-primary" onClick={() => setShowPostForm(true)}>+ Pasang Lapak Jual</button>
+                  : <button className="btn btn-secondary" onClick={() => setShowRegister(true)}>Daftar untuk Berjualan</button>
+                : <div className="alert alert-info connect-prompt">Sambungkan dompet untuk bertransaksi.</div>
               }
             </div>
             <OfferBoard
-              onTradeCreated={id => id && id > 0 ? goToTrade(id) : setView('mytrades')}
-              hasProfile={hasProfile}
-              onNeedProfile={() => setShowRegister(true)}
+              onTradeCreated={tid => (tid !== null && tid !== undefined) ? goToTrade(tid) : setView('mytrades')}
+              registered={registered}
+              onNeedRegister={() => setShowRegister(true)}
             />
           </>
         )}
         {view === 'trade' && activeTrade !== null && (
-          <TradeDetail tradeId={activeTrade} onBack={goBack} onSettled={() => {}} />
+          <TradeDetail tradeId={activeTrade} onBack={goBack} />
         )}
         {view === 'history' && <TradeHistory onViewTrade={goToTrade} />}
         {view === 'mytrades' && <TradeHistory onViewTrade={goToTrade} defaultTab="mine" />}
       </main>
 
       {showPostForm && (
-        <PostOfferForm onSuccess={() => setShowPostForm(false)} onClose={() => setShowPostForm(false)} userProfile={userProfile} />
+        <PostOfferForm onSuccess={() => setShowPostForm(false)} onClose={() => setShowPostForm(false)} />
       )}
 
       <footer className="app-footer">
-        <p>P2P Escrow built on <a href="https://genlayer.com" target="_blank" rel="noreferrer">GenLayer</a></p>
+        <p>Titip P2P Escrow · di atas <a href="https://genlayer.com" target="_blank" rel="noreferrer">GenLayer</a></p>
         <p className="app-footer-address" title={P2P_ESCROW_ADDRESS}>
-          Escrow contract: <code>{P2P_ESCROW_ADDRESS.slice(0, 10)}…{P2P_ESCROW_ADDRESS.slice(-8)}</code>
-          {' '}— verify this address before signing.
+          Kontrak: <code>{P2P_ESCROW_ADDRESS ? shortAddr(P2P_ESCROW_ADDRESS) : '— belum diisi —'}</code>
+          {' '}— verifikasi alamat ini sebelum tanda tangan.
         </p>
       </footer>
     </div>
