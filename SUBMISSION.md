@@ -39,7 +39,7 @@ Deployed contract: `0x004ccDB463A90698b443F0e54b736485618473aB`
 | release_crypto (non-owner seller) → buyer got 1 GEN | `0x26db082a59d94c993d17439942788e4b5afcdea0ef5c707a5f5134c9d700dcab` |
 | cancel_offer → status cancelled, funds back | `0x22acdf331ef0f02b6e8841c1b8137a13a56e8650641989ceffa55d452af31586` |
 | arbitrate_ai → refund to seller (generic receipt rejected by AI) | `0x351d82bd3be0de36f149ee866a0e02d24915d425dc6f057c8db303033d505a3d` |
-| arbitrate_ai → approve (valid Rp150k DANA receipt, AI verdict logged) | on-chain released status pending final confirmation |
+| arbitrate_ai → approve (valid Rp150k DANA receipt) → status released | `0xad9b7c054df6e011e4367770e3f9cf62a7531031916a1df2a8e0a786239a6908` |
 | Negative: set_proof_url on missing ID → `trade not found` | `0x09e36cce8aa8befb50241669baabb00aaba90ca8ac857b8e1a115ecdf18ce176` |
 | Negative: album link proof → exit 1, then closed by image guard | `0x0de6406dc1dc0efa5d39f21a764ce1d5975fbefea8b33030bfcf63c870305003` |
 
