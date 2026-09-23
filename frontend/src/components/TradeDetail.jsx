@@ -39,7 +39,7 @@ export default function TradeDetail({ tradeId, onBack }) {
   const [busy, setBusy] = useState(false)
   const [txStatus, setTxStatus] = useState('')
   const [error, setError] = useState('')
-  const [proofUrl, setProofUrl] = useState('')
+  const [proofUrl, setProofUrlInput] = useState('')
   const [note, setNote] = useState('')
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -51,7 +51,7 @@ export default function TradeDetail({ tradeId, onBack }) {
       const [t, o] = await Promise.all([getTrade(tradeId), getOwner().catch(() => '')])
       setTrade(t)
       setOwner(o || '')
-      if (t?.proof_url && !proofUrl) setProofUrl(t.proof_url)
+      if (t?.proof_url && !proofUrl) setProofUrlInput(t.proof_url)
     } catch { /* silent */ }
     finally { setLoading(false) }
   }, [tradeId])
@@ -92,7 +92,7 @@ export default function TradeDetail({ tradeId, onBack }) {
     setUploading(true); setError(''); setTxStatus('Mengunggah ke IPFS…')
     try {
       const url = await uploadToIPFS(file)
-      setProofUrl(url)
+      setProofUrlInput(url)
       setTxStatus('Terunggah. Klik “Kirim Bukti”.')
     } catch (err) {
       setError(err.message || 'Unggah gagal'); setTxStatus('')
@@ -194,7 +194,7 @@ export default function TradeDetail({ tradeId, onBack }) {
               </div>
               <div className="proof-input-row">
                 <input className="input mono" type="url" placeholder="https://… (link file gambar langsung)"
-                  value={proofUrl} onChange={e => setProofUrl(e.target.value)} />
+                  value={proofUrl} onChange={e => setProofUrlInput(e.target.value)} />
                 <button className="btn btn-primary"
                   disabled={busy || uploading || !proofUrl.startsWith('http')}
                   onClick={() => doAction(
