@@ -50,3 +50,7 @@ Thumbs.db
 
 # Node
 node_modules/
+
+# Wallet files — NEVER commit
+* wallet.txt
+* Wallet.txt
