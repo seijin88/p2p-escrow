@@ -1,1 +1,0 @@
-{"version":3,"file":"Signature.js","sourceRoot":"","sources":["../../../tempo/multisig/Signature.ts"],"names":[],"mappings":";;AAGA,sCAOC;AAVD,oCAA4C;AAG5C,SAAgB,aAAa,CAC3B,SAAuC;IAEvC,MAAM,QAAQ,GAAG,yBAAiB,CAAC,IAAI,CAAC,SAAS,CAAC,CAAA;IAClD,IAAI,QAAQ,CAAC,IAAI,KAAK,UAAU,IAAI,QAAQ,CAAC,IAAI,KAAK,UAAU;QAC9D,MAAM,IAAI,KAAK,CAAC,gDAAgD,CAAC,CAAA;IACnE,OAAO,QAAQ,CAAA;AACjB,CAAC"}

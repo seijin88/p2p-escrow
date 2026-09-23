@@ -166,7 +166,12 @@ body {
 
 /* ── Peta rute ── */
 .peta-rute { margin-bottom: 18px; }
-.peta-svg { width: 100%; height: auto; display: block; }
+.peta-svg {
+  width: 100%; height: auto; display: block;
+  background: #e4d7b4; border-radius: 10px; border: 1px solid var(--garis);
+}
+.peta-blok { fill: #d3c49c; }
+.peta-jalan { stroke: #f6efdb; stroke-width: 5; fill: none; }
 .jalur { fill: none; stroke-linecap: round; }
 .jalur-aktif { stroke: #b9ac83; }
 .jalur-jalan { stroke: var(--emas); stroke-dasharray: 10 8; animation: gerak 1.2s linear infinite; }
