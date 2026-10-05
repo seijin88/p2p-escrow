@@ -1,6 +1,8 @@
 # Environment files (private keys, credentials)
 .env
 *.env
+.env.arena
+*.key
 env/
 
 # Gltest config with private keys
