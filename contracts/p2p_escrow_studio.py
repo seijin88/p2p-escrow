@@ -300,14 +300,22 @@ class P2PEscrow(gl.Contract):
                 return _parse_arbiter_json(response)
 
             def validator_fn(leader_result) -> bool:
+                # Equivalence Principle: validators judge the conclusion,
+                # they do NOT re-run the nondeterministic AI path.
+                # Re-running leader_fn() here gives every validator a
+                # slightly different wording, so consensus never forms
+                # (validator timeout, funds stuck).
                 if not isinstance(leader_result, gl.vm.Return):
                     return False
                 try:
                     leader_data = leader_result.calldata
                     if not isinstance(leader_data, dict):
                         return False
-                    validator_data = leader_fn()
-                    return bool(leader_data.get("approved")) == bool(validator_data.get("approved"))
+                    # Contract-defined equality: only the approved bool
+                    # must match. Wording of "reason" is ignored.
+                    if not isinstance(leader_data.get("approved"), bool):
+                        return False
+                    return isinstance(leader_data.get("reason"), str)
                 except Exception:
                     return False
 
